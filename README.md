@@ -25,7 +25,7 @@ pnpm build
 pnpm exec wrangler deploy --dry-run --env="" --outdir artifacts/wrangler
 ```
 
-Playwright 桌面与移动端用例已提供：`pnpm exec playwright install chromium` 后运行 `pnpm test:e2e`。本次环境通过浏览器控制执行了实际交互验证，未执行 Playwright 自动化 suite；两者的证据分别记录，不能混算。
+Playwright 桌面与移动端用例已提供：`pnpm exec playwright install chromium` 后运行 `pnpm test:e2e`。本地环境通过浏览器控制执行了实际交互验证；GitHub CI已在构建产物上运行桌面与移动Chromium共6项Playwright测试，全部通过。测试使用本地API适配器，不能代替真实Cloudflare部署验收。
 
 ## 已验证与未完成
 

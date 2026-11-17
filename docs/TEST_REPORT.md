@@ -11,8 +11,8 @@
 | pnpm build | Vite与Worker构建通过；一个Release WASM资源 |
 | Wrangler deploy --dry-run | 通过本地打包检查；不是部署成功 |
 | Playwright test --list | 6 条测试可发现，包含桌面和移动配置 |
-| Playwright实际 suite | 未执行；浏览器交互通过 CUA执行，不能混记为 suite通过 |
-| GitHub Actions CI | 已上传并运行；66项测试、类型检查和构建通过；首轮浏览器测试2/6，正在验证修正 |
+| Playwright实际 suite | GitHub CI：桌面 3/3、移动 Chromium 3/3，全部通过（8.1 秒） |
+| GitHub Actions CI | 修正后全部通过：安装、类型检查、66项测试、构建、6项端到端测试 |
 
 原始结果：[Vitest JSON](evidence/vitest.json)。
 
@@ -55,7 +55,7 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 - 已观察到特定大量字符串分配+中断组合导致QuickJS清理GC断言。测试通过的是整个Worker强制销毁与新实例恢复，不是该路径优雅释放。错误实例不得复用。
 - 线上真实音源、LX加密/压缩兼容、真实歌单分页仍未完成。外部源注册表为空。
 - Cloudflare API权限检查：Access、Workers、Zone读取均403；没有部署或CPU指标。没有运行真实Access登录或伪造真实服务会话。
-- 未验证PWA、iOS后台播放、移动触屏与长期内存；未接入D1，不能声称跨用户持久化同步完成。
+- 未验证PWA、iOS后台播放、真实移动设备与长期内存；未接入D1，不能声称跨用户持久化同步完成。
 - 未启用任何具有部署秘密或可写GitHub权限的社区脚本检测任务。
 
 结论：本地架构核心链路有实测支持，Phase0的外部验收仍被阻塞。没有足够证据宣称完整项目可用或CPU目标已达标。
@@ -64,4 +64,6 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 
 [首轮运行](https://github.com/MillioApaski/serverless-music/actions/runs/44048098727)中，66项测试、类型检查和构建通过；Playwright首次执行2/6通过。trace确认：首次加载Worker依赖后Vite刷新页面，清空验证状态；移动端还存在装饰区域水平溢出，导致导航点击目标与实际可视区域错位。
 
-修正：端到端测试改为读取构建产物的Vite preview，复用仅本地的API适配器；开发模式提前优化Worker依赖；限制水平溢出、均分移动导航命中区域；切换页面回到顶部。测试增加视口宽度断言并等待音源注册表加载。未使用force点击或跳过失败检查。修正后的最终结果将另行记录。
+修正：端到端测试改为读取构建产物的Vite preview，复用仅本地的API适配器；开发模式提前优化Worker依赖；限制水平溢出、均分移动导航命中区域；切换页面回到顶部。测试增加视口宽度断言并等待音源注册表加载。未使用force点击或跳过失败检查。[修正后运行](https://github.com/MillioApaski/serverless-music/actions/runs/44049106360)全部通过：66项单元/集成测试、构建、桌面与移动 Chromium 的6项Playwright测试；浏览器用例耗时8.1秒。受测代码commit为`5b6369cff4c125425e6dbfe2068c95a5d4b04ee6`。后续仅补充此文档和证据，不改变受测代码。
+
+原始CI状态及测试摘要见 [github-ci.json](evidence/github-ci.json)。Cloudflare权限在本次恢复工作后再次验证仍返回403；没有发生生产部署或DNS修改。

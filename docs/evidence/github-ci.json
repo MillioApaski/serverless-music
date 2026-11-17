@@ -1,0 +1,25 @@
+{
+  "verifiedCodeCommit": "5b6369cff4c125425e6dbfe2068c95a5d4b04ee6",
+  "runId": 44049106360,
+  "jobId": 133922133115,
+  "url": "https://github.com/MillioApaski/serverless-music/actions/runs/44049106360",
+  "conclusion": "success",
+  "unitAndIntegrationTests": 66,
+  "playwright": {
+    "passed": 6,
+    "failed": 0,
+    "durationSeconds": 8.1,
+    "projects": [
+      "chromium",
+      "mobile-chromium"
+    ]
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "cloudflareDeployment": "not_performed",
+  "limitations": [
+    "Preview uses a local Worker API adapter.",
+    "Mobile Chromium emulation does not verify physical devices.",
+    "Cloudflare Access, Workers CPU and real upstream audio remain unverified."
+  ]
+}

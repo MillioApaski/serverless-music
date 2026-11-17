@@ -4,7 +4,7 @@
 
 ## 仓库与云端连接
 
-代码已上传到 https://github.com/MillioApaski/serverless-music 的 main 分支，远端 Git tree 与本地交付版本完全一致。GitHub CI已触发，远程依赖安装、类型检查、66项测试和构建通过；浏览器测试结果见 TEST_REPORT.md。
+代码已上传到 https://github.com/MillioApaski/serverless-music 的 main 分支，初次上传已核对Git tree一致，随后修正预览环境刷新与移动端导航问题。GitHub CI已全部通过：依赖安装、类型检查、66项测试、构建以及桌面/移动端6项Playwright测试。结果见 TEST_REPORT.md。
 
 用户调整 Cloudflare权限后再次验证，Access organization / Access apps / Workers scripts / zones 仍返回403。连接明确报告缺少OAuth scope，需重新连接并授权相应Workers、Access、Zone范围。尚未进行生产部署或修改DNS。
 
@@ -25,7 +25,7 @@
 | 真实 Access 全站策略 | 阻塞 | 当前连接缺 Access 权限 |
 | PlaylistOut适配 | 部分可行 | MIT normalize 模块与 ID 保留通过测试；线上网络、分页未验证 |
 | Workers 资源消耗 | 阻塞 | 当前连接缺 Workers 权限；CPU P95 没有数值 |
-| 浏览器自动化 | 部分验证 | CUA 实际交互完成；6 条 Playwright桌面/移动测试已编写并列举，suite未执行 |
+| 浏览器自动化 | 当前用例已验证 | CUA交互及GitHub CI桌面/移动Chromium共6项Playwright测试通过；未替代真实移动设备验收 |
 
 ## 后续阶段
 
