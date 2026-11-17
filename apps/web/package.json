@@ -1,0 +1,14 @@
+{
+  "name": "@serverless-music/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "lucide-react": "^0.468.0",
+    "@serverless-music/core": "workspace:*",
+    "@serverless-music/player": "workspace:*",
+    "@serverless-music/source-runtime": "workspace:*"
+  }
+}

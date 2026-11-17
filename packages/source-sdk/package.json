@@ -1,0 +1,12 @@
+{
+  "name": "@serverless-music/source-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@serverless-music/core": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/policy.ts"
+  }
+}

@@ -1,0 +1,501 @@
+import type { Playlist, Track } from '../models/playlist';
+import { ProviderError } from '../models/playlist';
+
+export interface RawQQSinger {
+  id?: number;
+  mid?: string;
+  name?: string;
+  title?: string;
+}
+
+export interface RawQQAlbum {
+  id?: number;
+  mid?: string;
+  name?: string;
+  title?: string;
+  time_public?: string;
+}
+
+export interface RawQQSong {
+  songid?: number | string;
+  id?: number | string;
+  songmid?: string;
+  mid?: string;
+  songname?: string;
+  name?: string;
+  title?: string;
+  singer?: RawQQSinger[];
+  albumname?: string;
+  albummid?: string;
+  album?: RawQQAlbum | string;
+  interval?: number;
+  time_public?: string;
+  index_album?: number;
+  index_cd?: number;
+  cdIdx?: number;
+  vid?: string;
+  mv?: { vid?: string; id?: number | string };
+  pay?: {
+    payplay?: number;
+    payalbum?: number;
+    payinfo?: number;
+    pay_play?: number;
+    pay_down?: number;
+    pay_month?: number;
+    price_album?: number;
+    price_track?: number;
+    paydownload?: number;
+    paytrackmouth?: number;
+  };
+  action?: {
+    switch?: number;
+    msgid?: number;
+    alert?: number;
+    icons?: number;
+  };
+  file?: {
+    b_30s?: number;
+    e_30s?: number;
+    size_try?: number;
+    try_begin?: number;
+    try_end?: number;
+    size_128mp3?: number;
+    size_320mp3?: number;
+    size_flac?: number;
+    size_128?: number;
+    size_320?: number;
+    size_ape?: number;
+    size_dts?: number;
+    size_hires?: number;
+  };
+  msgid?: number;
+  alertid?: number;
+  size128?: number;
+  size320?: number;
+  sizeflac?: number;
+}
+
+export interface RawQQCdItem {
+  disstid?: string;
+  dissname?: string;
+  title?: string;
+  nickname?: string;
+  nick?: string;
+  logo?: string;
+  picurl?: string;
+  total_song_num?: number;
+  songnum?: number;
+  cur_song_num?: number;
+  song_begin?: number;
+  ctime?: number;
+  mtime?: number;
+  desc?: string;
+  tags?: Array<{ id?: number; name?: string; pid?: number }>;
+  visitnum?: number;
+  listennum?: number;
+  songlist?: RawQQSong[];
+}
+
+export interface RawCYQQResponse {
+  code?: number;
+  subcode?: number;
+  cdlist?: RawQQCdItem[];
+}
+
+export interface RawMusicUResponse {
+  code?: number;
+  playlist?: {
+    code?: number;
+    data?: {
+      code?: number;
+      dirinfo?: {
+        id?: number | string;
+        title?: string;
+        creator?: {
+          nick?: string;
+          name?: string;
+        };
+        picurl?: string;
+        total_song_num?: number;
+        songnum?: number;
+        ctime?: number;
+        mtime?: number;
+        desc?: string;
+        tag?: Array<{ id?: number; name?: string; pid?: number }>;
+        vec_tagname?: string[];
+        listennum?: number;
+        visitnum?: number;
+      };
+      songlist?: RawQQSong[];
+    };
+  };
+}
+
+/**
+ * Normalizes raw song entry into a typed PlaylistOut Track.
+ */
+export function normalizeQQTrack(rawSong: RawQQSong, index: number): Track {
+  if (!rawSong || typeof rawSong !== 'object') {
+    throw new ProviderError('PARSE_ERROR', `Malformed song item at index ${index}.`, 502);
+  }
+
+  const rawTitle = rawSong.songname || rawSong.name || rawSong.title;
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
+  if (!title) {
+    throw new ProviderError('PARSE_ERROR', `Missing mandatory track title for song at index ${index}.`, 502);
+  }
+
+  // Extract artist string (multiple artists joined by ", ")
+  const artists: string[] = [];
+  if (Array.isArray(rawSong.singer)) {
+    for (const s of rawSong.singer) {
+      if (s && typeof s === 'object') {
+        const name = (s.name || s.title || '').trim();
+        if (name) {
+          artists.push(name);
+        }
+      }
+    }
+  }
+  const artist = artists.join(', ');
+
+  // Extract album name (string only)
+  let album: string | undefined;
+  if (typeof rawSong.albumname === 'string' && rawSong.albumname.trim().length > 0) {
+    album = rawSong.albumname.trim();
+  } else if (rawSong.album && typeof rawSong.album === 'object') {
+    const albumObjName = (rawSong.album.name || rawSong.album.title || '').trim();
+    if (albumObjName.length > 0) {
+      album = albumObjName;
+    }
+  }
+
+  // Extract ID (prefer mid if available, fallback to id)
+  const trackMid = (rawSong.songmid || rawSong.mid || '').trim();
+  const trackId = rawSong.songid ?? rawSong.id;
+  const id = trackMid || (trackId !== undefined && trackId !== null ? String(trackId).trim() : undefined);
+
+  // Duration in milliseconds
+  const intervalSeconds = typeof rawSong.interval === 'number' && rawSong.interval >= 0 ? rawSong.interval : undefined;
+  const durationMs = intervalSeconds !== undefined ? intervalSeconds * 1000 : undefined;
+
+  // Release date. QQ commonly returns compact YYYYMMDD (e.g. 20210119),
+  // while some endpoints return YYYY-MM-DD. Prefer the track date and fall back
+  // to the album date when the track-level field is absent.
+  const releaseDateRaw =
+    rawSong.time_public ||
+    (rawSong.album && typeof rawSong.album === 'object' ? rawSong.album.time_public : undefined);
+  let releaseDate: string | undefined;
+  if (typeof releaseDateRaw === 'string') {
+    const cleanDate = releaseDateRaw.trim();
+    if (/^\d{8}$/.test(cleanDate) && cleanDate !== '00000000') {
+      releaseDate = `${cleanDate.slice(0, 4)}-${cleanDate.slice(4, 6)}-${cleanDate.slice(6, 8)}`;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDate) && cleanDate !== '0000-00-00') {
+      releaseDate = cleanDate;
+    }
+  }
+
+  // Track & Disc numbers. Modern QQ payloads use zero-based index_cd, so convert
+  // it to PlaylistOut's one-based discNumber. Keep cdIdx as a legacy fallback.
+  const trackNumber =
+    typeof rawSong.index_album === 'number' && rawSong.index_album > 0
+      ? rawSong.index_album
+      : undefined;
+  const discNumber =
+    typeof rawSong.index_cd === 'number' && rawSong.index_cd >= 0
+      ? rawSong.index_cd + 1
+      : typeof rawSong.cdIdx === 'number' && rawSong.cdIdx > 0
+        ? rawSong.cdIdx
+        : undefined;
+
+  // Source URL
+  const sourceUrl = trackMid ? `https://y.qq.com/n/ryqq/songDetail/${trackMid}` : undefined;
+
+  // Track / Album Cover URL (zero additional requests: derived directly from raw upstream album mid)
+  let albumMid: string | undefined;
+  if (typeof rawSong.albummid === 'string' && rawSong.albummid.trim().length > 0) {
+    albumMid = rawSong.albummid.trim();
+  } else if (rawSong.album && typeof rawSong.album === 'object' && typeof rawSong.album.mid === 'string' && rawSong.album.mid.trim().length > 0) {
+    albumMid = rawSong.album.mid.trim();
+  }
+  const coverUrl = albumMid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg` : undefined;
+
+  // Audio Stream Sizes (support both legacy root keys and modern file container keys)
+  const size128 = rawSong.size128 ?? rawSong.file?.size_128mp3 ?? rawSong.file?.size_128;
+  const size320 = rawSong.size320 ?? rawSong.file?.size_320mp3 ?? rawSong.file?.size_320;
+  const sizeflac = rawSong.sizeflac ?? rawSong.file?.size_flac;
+
+  // Derive track availability & VIP status
+  const payplay = rawSong.pay?.payplay ?? rawSong.pay?.pay_play;
+  const payalbum = rawSong.pay?.payalbum ?? (rawSong.pay?.price_album && rawSong.pay.price_album > 0 ? 1 : 0);
+  const alertid = rawSong.alertid ?? rawSong.action?.alert;
+  const msgid = rawSong.msgid ?? rawSong.action?.msgid;
+  const icons = rawSong.action?.icons;
+  // In QQ Music upstream protocol, VIP stream permissions are designated by action.icons bit flags:
+  // - Bit 1 ((icons >> 1) & 1): VIP streaming permission flag (mobile & modern catalog)
+  // - Bit 18 ((icons >> 18) & 1): Web client VIP badge flag
+  const isVipIcon = Boolean(icons && (((icons >> 1) & 1) === 1 || ((icons >> 18) & 1) === 1));
+
+  const isPaidAlbum = payalbum === 1;
+  const isVipStream = payplay === 1 || msgid === 13 || alertid === 41 || isVipIcon;
+  const isGeoBlockedOnly = alertid === 2 || alertid === 21 || msgid === 14;
+
+  const hasExplicitZeroAudio =
+    size128 === 0 &&
+    size320 === 0 &&
+    (sizeflac === undefined || sizeflac === 0);
+
+  // A song is truly unplayable if:
+  // - It has explicit takedown alert (alertid === 11: "应版权方要求，该歌曲暂无法播放")
+  // - It has non-VIP/non-geo alert code (e.g. alertid === 1: takedown/no copyright)
+  // - Or it has takedown msgid === 0 (and is not VIP or paid album)
+  // - Or all audio stream sizes are 0
+  const isTakedownAlert =
+    alertid === 11 ||
+    (alertid !== undefined &&
+      alertid !== 0 &&
+      !isGeoBlockedOnly &&
+      alertid !== 41 &&
+      !isVipStream &&
+      !isPaidAlbum);
+  const isTakedownMsg = msgid === 0 && !isVipStream && !isPaidAlbum;
+  const isTrulyUnplayable = isTakedownAlert || isTakedownMsg || hasExplicitZeroAudio;
+
+  let isAvailable = true;
+  let isVip = false;
+  let status: import('../models/playlist').TrackAvailability = 'playable';
+  let statusText = '正常';
+
+  if (isPaidAlbum) {
+    // 1. Digital paid album / single purchase required (VIP subscription alone cannot play)
+    isAvailable = true;
+    isVip = false;
+    status = 'paid';
+    statusText = '付费专辑';
+  } else if (isTrulyUnplayable) {
+    // 2. Truly unplayable domestically: takedown, copyright expired, or zero audio files
+    isAvailable = false;
+    isVip = false;
+    status = 'unplayable';
+    statusText = '下架/无版权';
+  } else if (isVipStream) {
+    // 3. VIP membership required to stream the full song
+    isAvailable = true;
+    isVip = true;
+    status = 'vip';
+    statusText = 'VIP专享';
+  } else {
+    // 4. Normal playable track (including mainland-only geo-restrictions & free streams with VIP download)
+    isAvailable = true;
+    isVip = false;
+    status = 'playable';
+    statusText = '正常';
+  }
+
+  // Max Audio Quality
+  let maxQuality: string | undefined;
+  if (sizeflac && sizeflac > 0) {
+    maxQuality = 'FLAC';
+  } else if (size320 && size320 > 0) {
+    maxQuality = '320kbps';
+  } else if (size128 && size128 > 0) {
+    maxQuality = '128kbps';
+  }
+
+  // MV
+  const rawVid =
+    typeof rawSong.vid === 'string' && rawSong.vid.trim()
+      ? rawSong.vid.trim()
+      : typeof rawSong.mv?.vid === 'string' && rawSong.mv.vid.trim()
+        ? rawSong.mv.vid.trim()
+        : undefined;
+  const mvId = rawVid || undefined;
+  const mvUrl = mvId ? `https://y.qq.com/n/ryqq/mv/${mvId}` : undefined;
+
+  return {
+    index,
+    title,
+    artist,
+    album,
+    id,
+    durationMs,
+    releaseDate,
+    trackNumber,
+    discNumber,
+    sourceUrl,
+    coverUrl,
+    isAvailable,
+    isVip,
+    status,
+    statusText,
+    maxQuality,
+    mvId,
+    mvUrl,
+  };
+}
+
+/**
+ * Helper to extract expected total song count from upstream metadata container.
+ */
+export function extractTotalExpected(container: { total_song_num?: number; songnum?: number }): number | undefined {
+  if (typeof container.total_song_num === 'number' && container.total_song_num >= 0) {
+    return container.total_song_num;
+  }
+  if (typeof container.songnum === 'number' && container.songnum >= 0) {
+    return container.songnum;
+  }
+  return undefined;
+}
+
+/**
+ * Normalizes c.y.qq.com response into a PlaylistOut Playlist.
+ */
+export function normalizeCYQQResponse(payload: RawCYQQResponse, expectedId: string): Playlist {
+  if (!payload || typeof payload !== 'object') {
+    throw new ProviderError('PARSE_ERROR', 'Upstream returned invalid or empty response object.', 502);
+  }
+
+  if (payload.code !== 0) {
+    if (payload.code === 10 || payload.code === -1) {
+      throw new ProviderError('PLAYLIST_NOT_FOUND', `QQ Music playlist ${expectedId} does not exist or is private.`, 404);
+    }
+    throw new ProviderError('UPSTREAM_ERROR', `QQ Music returned error code: ${payload.code}.`, 502);
+  }
+
+  if (!Array.isArray(payload.cdlist) || payload.cdlist.length === 0) {
+    throw new ProviderError('PLAYLIST_NOT_FOUND', `QQ Music playlist ${expectedId} was not found or has no content.`, 404);
+  }
+
+  const cd = payload.cdlist[0];
+  const name = (cd.dissname || cd.title || '').trim();
+  if (!name) {
+    throw new ProviderError('PARSE_ERROR', 'QQ Music response is missing playlist name.', 502);
+  }
+
+  const creatorRaw = (cd.nickname || cd.nick || '').trim();
+  const creator = creatorRaw.length > 0 ? creatorRaw : undefined;
+
+  let coverUrl = (cd.logo || cd.picurl || '').trim();
+  if (coverUrl.startsWith('http://')) {
+    coverUrl = `https://${coverUrl.slice(7)}`;
+  }
+  const normalizedCoverUrl = coverUrl.length > 0 ? coverUrl : undefined;
+
+  const rawSonglist = Array.isArray(cd.songlist) ? cd.songlist : [];
+  const tracks: Track[] = rawSonglist.map((song, idx) => normalizeQQTrack(song, idx + 1));
+
+  const totalExpected = extractTotalExpected(cd);
+  if (totalExpected !== undefined && tracks.length !== totalExpected) {
+    throw new ProviderError(
+      'INCOMPLETE_PLAYLIST',
+      `Incomplete playlist: QQ Music reported ${totalExpected} songs, but only ${tracks.length} are present.`,
+      502,
+      { expectedCount: totalExpected, actualCount: tracks.length },
+    );
+  }
+
+  const createTime = typeof cd.ctime === 'number' && cd.ctime > 0 ? cd.ctime : undefined;
+  const updateTime = typeof cd.mtime === 'number' && cd.mtime > 0 ? cd.mtime : undefined;
+  const descRaw = (cd.desc || '').trim();
+  const description = descRaw.length > 0 ? descRaw : undefined;
+  const tags: string[] = Array.isArray(cd.tags)
+    ? cd.tags.map((t) => (t?.name || '').trim()).filter((n) => n.length > 0)
+    : [];
+  const playCount = typeof cd.visitnum === 'number' && cd.visitnum > 0
+    ? cd.visitnum
+    : typeof cd.listennum === 'number' && cd.listennum > 0
+      ? cd.listennum
+      : undefined;
+  const sourceUrl = `https://y.qq.com/n/ryqq/playlist/${expectedId}`;
+
+  return {
+    platform: 'qqmusic',
+    id: expectedId,
+    name,
+    creator,
+    coverUrl: normalizedCoverUrl,
+    trackCount: tracks.length,
+    tracks,
+    createTime,
+    updateTime,
+    description,
+    tags: tags.length > 0 ? tags : undefined,
+    playCount,
+    sourceUrl,
+  };
+}
+
+/**
+ * Normalizes u.y.qq.com musicu response into a PlaylistOut Playlist.
+ */
+export function normalizeMusicUResponse(payload: RawMusicUResponse, expectedId: string): Playlist {
+  if (!payload || typeof payload !== 'object') {
+    throw new ProviderError('PARSE_ERROR', 'Upstream returned invalid or empty response object.', 502);
+  }
+
+  const pl = payload.playlist;
+  if (!pl || pl.code !== 0 || !pl.data) {
+    throw new ProviderError('UPSTREAM_ERROR', `QQ Music musicu returned non-zero code or missing data.`, 502);
+  }
+
+  const data = pl.data;
+  const dirinfo = data.dirinfo || {};
+  const name = (dirinfo.title || '').trim();
+  if (!name) {
+    throw new ProviderError('PARSE_ERROR', 'QQ Music musicu response is missing playlist title.', 502);
+  }
+
+  const creatorRaw = (dirinfo.creator?.nick || dirinfo.creator?.name || '').trim();
+  const creator = creatorRaw.length > 0 ? creatorRaw : undefined;
+
+  let coverUrl = (dirinfo.picurl || '').trim();
+  if (coverUrl.startsWith('http://')) {
+    coverUrl = `https://${coverUrl.slice(7)}`;
+  }
+  const normalizedCoverUrl = coverUrl.length > 0 ? coverUrl : undefined;
+
+  const rawSonglist = Array.isArray(data.songlist) ? data.songlist : [];
+  const tracks: Track[] = rawSonglist.map((song, idx) => normalizeQQTrack(song, idx + 1));
+
+  const totalExpected = extractTotalExpected(dirinfo);
+  if (totalExpected !== undefined && tracks.length !== totalExpected) {
+    throw new ProviderError(
+      'INCOMPLETE_PLAYLIST',
+      `Incomplete playlist: QQ Music reported ${totalExpected} songs, but only ${tracks.length} are present.`,
+      502,
+      { expectedCount: totalExpected, actualCount: tracks.length },
+    );
+  }
+
+  const createTime = typeof dirinfo.ctime === 'number' && dirinfo.ctime > 0 ? dirinfo.ctime : undefined;
+  const updateTime = typeof dirinfo.mtime === 'number' && dirinfo.mtime > 0 ? dirinfo.mtime : undefined;
+  const descRaw = (dirinfo.desc || '').trim();
+  const description = descRaw.length > 0 ? descRaw : undefined;
+  const tags: string[] = Array.isArray(dirinfo.vec_tagname) && dirinfo.vec_tagname.length > 0
+    ? dirinfo.vec_tagname.map((t) => String(t).trim()).filter((n) => n.length > 0)
+    : Array.isArray(dirinfo.tag)
+      ? dirinfo.tag.map((t) => (t?.name || '').trim()).filter((n) => n.length > 0)
+      : [];
+  const playCount = typeof dirinfo.listennum === 'number' && dirinfo.listennum > 0
+    ? dirinfo.listennum
+    : typeof dirinfo.visitnum === 'number' && dirinfo.visitnum > 0
+      ? dirinfo.visitnum
+      : undefined;
+  const sourceUrl = `https://y.qq.com/n/ryqq/playlist/${expectedId}`;
+
+  return {
+    platform: 'qqmusic',
+    id: expectedId,
+    name,
+    creator,
+    coverUrl: normalizedCoverUrl,
+    trackCount: tracks.length,
+    tracks,
+    createTime,
+    updateTime,
+    description,
+    tags: tags.length > 0 ? tags : undefined,
+    playCount,
+    sourceUrl,
+  };
+}

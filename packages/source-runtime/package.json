@@ -1,0 +1,14 @@
+{
+  "name": "@serverless-music/source-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@serverless-music/core": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/runtime.ts"
+  }
+}

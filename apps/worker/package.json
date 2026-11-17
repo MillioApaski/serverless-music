@@ -1,0 +1,14 @@
+{
+  "name": "@serverless-music/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "hono": "^4.10.0",
+    "jose": "^6.1.0",
+    "zod": "^4.1.0",
+    "@serverless-music/core": "workspace:*",
+    "@serverless-music/playlist": "workspace:*",
+    "@serverless-music/stream-proxy": "workspace:*"
+  }
+}
