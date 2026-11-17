@@ -7,5 +7,6 @@
   "preview_urls": false,
   "assets": {"directory":"dist/client","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":true},
   "vars": {"APP_ENV":"production","ACCESS_ISSUER":"https://unknown22518.cloudflareaccess.com","ACCESS_AUD":"48ecd079badcbeea93d0d967eafdd39f9d04ff28e9ebbca0c3c6aa294b4c5883"},
+  "ratelimits": [{"name":"HTTP_LIMITER","namespace_id":"1461127045","simple":{"limit":120,"period":60}}],
   "env": {"local":{"workers_dev":false,"vars":{"APP_ENV":"local","DEV_IDENTITY":"local-poc-user"}}}
 }

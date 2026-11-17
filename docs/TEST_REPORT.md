@@ -7,7 +7,7 @@
 | 检查 | 实际结果 |
 | --- | --- |
 | pnpm typecheck | 通过 |
-| pnpm test | 5 个文件，66 项全部通过 |
+| pnpm test | 最新本地结果：6个文件，70项全部通过（含新增4项生产限流路由测试） |
 | pnpm build | Vite与Worker构建通过；一个Release WASM资源 |
 | Wrangler deploy --dry-run | 通过本地打包检查；不是部署成功 |
 | Playwright test --list | 6 条测试可发现，包含桌面和移动配置 |
@@ -67,3 +67,11 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 修正：端到端测试改为读取构建产物的Vite preview，复用仅本地的API适配器；开发模式提前优化Worker依赖；限制水平溢出、均分移动导航命中区域；切换页面回到顶部。测试增加视口宽度断言并等待音源注册表加载。未使用force点击或跳过失败检查。[修正后运行](https://github.com/MillioApaski/serverless-music/actions/runs/44049106360)全部通过：66项单元/集成测试、构建、桌面与移动 Chromium 的6项Playwright测试；浏览器用例耗时8.1秒。受测代码commit为`5b6369cff4c125425e6dbfe2068c95a5d4b04ee6`。后续仅补充此文档和证据，不改变受测代码。
 
 原始CI状态及测试摘要见 [github-ci.json](evidence/github-ci.json)。Cloudflare权限在本次恢复工作后再次验证仍返回403；没有发生生产部署或DNS修改。
+
+## 2026-11-18 生产限流配置回归
+
+用户线上截图显示4/5：宿主隔离、无限循环中断、恢复、Range通过；QuickJS初始化和HTTP Bridge失败，错误为“请求限流尚未配置”。这说明实际网关已允许已登录访问，但生产Worker缺HTTP_LIMITER绑定。未将此截图记录成5/5。
+
+新增绑定：HTTP_LIMITER，namespace_id=1461127045，120次/60秒；使用现有已验证用户ID作为key。Cloudflare按接入点近似限流。新增4项生产路由测试明确stub认证边界，检查缺绑定返回503、允许时Bridge成功、拒绝时429，以及Bridge/播放会话共享同一用户key；实际Access验签仍由既有安全用例覆盖。
+
+本地验证：70/70测试、类型检查、构建及Wrangler生产dry-run全部通过。Wrangler明确输出 env.HTTP_LIMITER (120 requests/60s) / Rate Limit。CI增加相同生产打包检查。尚未代为部署新版本，线上修复结果待用户重新部署及复测。

@@ -18,6 +18,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Validate production Worker bindings
+        run: pnpm exec wrangler deploy --dry-run --env="" --outdir artifacts/wrangler
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
