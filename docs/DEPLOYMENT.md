@@ -1,6 +1,8 @@
 # 部署与解除 Phase 0 阻塞
 
-本工程未进行生产部署，没有建立 music.convert-alpha.cc 的 DNS 或 Access 应用。域名仍按任务书保留为待用户确认的候选。
+用户已部署测试站点 https://music.convert-alpha.cc 。2026-11-18 已补充仓库生产 Access 配置：issuer 为 https://unknown22518.cloudflareaccess.com，audience 为该应用的 AUD。首页和 /api/me 的未登录请求均已观察到转向对应 Access 登录页。最新配置仍需由 Cloudflare 部署后验证已登录的 Worker 响应，尚不能视为生产验收通过。
+
+配置提交：`d64a6680ee2b960cfb46b39c0406295a01d4123f`。若使用仓库自动部署，检查该提交或后续提交是否部署成功；否则手动部署最新 main。填入 issuer/audience 本身不会创建或修改 Access Allow 策略。
 
 ## 当前权限阻塞
 

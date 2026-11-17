@@ -1,12 +1,12 @@
 # 开发进度
 
-更新时间：2026-11-17。状态：Phase 0 本地验证完成主要链路，外部验收被阻塞。尚未部署，不是完整音乐播放器。
+更新时间：2026-11-18。状态：Phase 0 本地及 CI 验证完成主要链路，用户已部署测试站点，外部验收尚未完成；不是完整音乐播放器。
 
 ## 仓库与云端连接
 
 代码已上传到 https://github.com/MillioApaski/serverless-music 的 main 分支，初次上传已核对Git tree一致，随后修正预览环境刷新与移动端导航问题。GitHub CI已全部通过：依赖安装、类型检查、66项测试、构建以及桌面/移动端6项Playwright测试。结果见 TEST_REPORT.md。
 
-用户调整 Cloudflare权限后再次验证，Access organization / Access apps / Workers scripts / zones 仍返回403。连接明确报告缺少OAuth scope，需重新连接并授权相应Workers、Access、Zone范围。尚未进行生产部署或修改DNS。
+用户调整 Cloudflare权限后再次验证，Access organization / Access apps / Workers scripts / zones 仍返回403。连接明确报告缺少OAuth scope，需重新连接并授权相应Workers、Access、Zone范围。本助手未执行云端部署或DNS修改；用户已部署 music.convert-alpha.cc 并建立 Access 入口。仓库已补充用户提供的 issuer/audience，等待最新版本上线后的已登录验证。
 
 ## Phase 0
 
@@ -22,7 +22,7 @@
 | Direct / Redirect / Proxy | 本地已验证 | 固定自有音频、会话凭证及 Range 集成测试；外部上游使用受控 Fetcher |
 | 实际外部音频代理 | 尚未验证 | 缺 Cloudflare 部署权限与获准外部音频样本 |
 | Access JWT | 代码/本地验签已验证 | 本地签名测试证书验证负向样本 |
-| 真实 Access 全站策略 | 阻塞 | 当前连接缺 Access 权限 |
+| 真实 Access 全站策略 | 部分观察/待验收 | 首页及 /api/me 未登录时均转向 Access 登录页；已登录身份和策略内容尚未验证 |
 | PlaylistOut适配 | 部分可行 | MIT normalize 模块与 ID 保留通过测试；线上网络、分页未验证 |
 | Workers 资源消耗 | 阻塞 | 当前连接缺 Workers 权限；CPU P95 没有数值 |
 | 浏览器自动化 | 当前用例已验证 | CUA交互及GitHub CI桌面/移动Chromium共6项Playwright测试通过；未替代真实移动设备验收 |
@@ -51,6 +51,6 @@
 
 1. 可访问 Workers / Access / 目标 Zone 的 Cloudflare连接权限与实际 Access允许身份。
 2. 至少一个能核实资源使用授权的真实音源脚本及测试曲目，用于LX接口/加密兼容和真实播放验收。
-3. 正式部署域名确认。当前没有创建 music.convert-alpha.cc 或更改用户现有域名。
+3. 域名已确认为 music.convert-alpha.cc；待最新配置部署后验证已登录访问。
 
 任务书要求 Phase 0先通过，不能在这些外部验收缺口仍存在时把后续阶段标记完成。当前保存了可复现工程、测试、证据及部署步骤，解除阻塞后从本阶段继续。
