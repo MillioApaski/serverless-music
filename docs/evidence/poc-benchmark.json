@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-11-17T08:16:00.502Z",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux",
+    "quickjs": "0.32.0 release-sync",
+    "where": "local Node; mocked HTTP transport, real WASM runtime"
+  },
+  "initWallMs": 54.327432999999985,
+  "calls": 1000,
+  "requestWallP50": 4.398145000000113,
+  "requestWallP95": 4.725623000000041,
+  "guestBytesBefore": 100050,
+  "guestBytesAfter": 100050,
+  "guestBytesDelta": 0,
+  "workerCpuP95": null,
+  "limitations": [
+    "Does not measure Cloudflare CPU, real upstreams, or long-running browser memory.",
+    "QuickJS guest allocation stats do not represent total WASM linear memory or browser RSS."
+  ]
+}
