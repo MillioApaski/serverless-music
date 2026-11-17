@@ -1,7 +1,7 @@
-import type { Plugin } from 'vite';
+import type { Plugin, ViteDevServer } from 'vite';
 import { app } from '../apps/worker/src/index';
 // Local-only adapter. It is never included in the deployed Worker bundle.
-export function localApi():Plugin{return {name:'local-worker-api',configureServer(server){server.middlewares.use(async(req,res,next)=>{
+function attachApi(server:{middlewares:ViteDevServer['middlewares']}){server.middlewares.use(async(req,res,next)=>{
  if(!req.url?.startsWith('/api/'))return next();
  try {
    const headers=new Headers();for(const [k,v]of Object.entries(req.headers)){if(v)headers.set(k,Array.isArray(v)?v.join(','):v)}
@@ -14,4 +14,5 @@ export function localApi():Plugin{return {name:'local-worker-api',configureServe
    if(response.body){const reader=response.body.getReader();try{while(!signal.signal.aborted){const {done,value}=await reader.read();if(done)break;if(!res.write(value))await new Promise(resolve=>res.once('drain',resolve))}}finally{await reader.cancel().catch(()=>{})}}
    res.end();
  }catch{if(!res.headersSent)res.statusCode=500;res.end('Local adapter failure')}
- })}}}
+ })}
+export function localApi():Plugin{return {name:'local-worker-api',configureServer:attachApi,configurePreviewServer:attachApi}}

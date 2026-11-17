@@ -12,7 +12,7 @@
 | Wrangler deploy --dry-run | 通过本地打包检查；不是部署成功 |
 | Playwright test --list | 6 条测试可发现，包含桌面和移动配置 |
 | Playwright实际 suite | 未执行；浏览器交互通过 CUA执行，不能混记为 suite通过 |
-| GitHub Actions CI | 工作流已编写，未上传仓库、未远程执行 |
+| GitHub Actions CI | 已上传并运行；66项测试、类型检查和构建通过；首轮浏览器测试2/6，正在验证修正 |
 
 原始结果：[Vitest JSON](evidence/vitest.json)。
 
@@ -59,3 +59,9 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 - 未启用任何具有部署秘密或可写GitHub权限的社区脚本检测任务。
 
 结论：本地架构核心链路有实测支持，Phase0的外部验收仍被阻塞。没有足够证据宣称完整项目可用或CPU目标已达标。
+
+## GitHub首轮CI与修正
+
+[首轮运行](https://github.com/MillioApaski/serverless-music/actions/runs/44048098727)中，66项测试、类型检查和构建通过；Playwright首次执行2/6通过。trace确认：首次加载Worker依赖后Vite刷新页面，清空验证状态；移动端还存在装饰区域水平溢出，导致导航点击目标与实际可视区域错位。
+
+修正：端到端测试改为读取构建产物的Vite preview，复用仅本地的API适配器；开发模式提前优化Worker依赖；限制水平溢出、均分移动导航命中区域；切换页面回到顶部。测试增加视口宽度断言并等待音源注册表加载。未使用force点击或跳过失败检查。修正后的最终结果将另行记录。

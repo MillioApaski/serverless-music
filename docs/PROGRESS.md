@@ -2,6 +2,12 @@
 
 更新时间：2026-11-17。状态：Phase 0 本地验证完成主要链路，外部验收被阻塞。尚未部署，不是完整音乐播放器。
 
+## 仓库与云端连接
+
+代码已上传到 https://github.com/MillioApaski/serverless-music 的 main 分支，远端 Git tree 与本地交付版本完全一致。GitHub CI已触发，远程依赖安装、类型检查、66项测试和构建通过；浏览器测试结果见 TEST_REPORT.md。
+
+用户调整 Cloudflare权限后再次验证，Access organization / Access apps / Workers scripts / zones 仍返回403。连接明确报告缺少OAuth scope，需重新连接并授权相应Workers、Access、Zone范围。尚未进行生产部署或修改DNS。
+
 ## Phase 0
 
 | 验收项 | 状态 | 证据或缺口 |

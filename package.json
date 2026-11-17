@@ -12,7 +12,8 @@
     "worker:dev": "wrangler dev --local --env local",
     "deploy": "pnpm build && wrangler deploy --env=\"\"",
     "poc": "node --import tsx scripts/run-poc.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "pnpm build && playwright test",
+    "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",

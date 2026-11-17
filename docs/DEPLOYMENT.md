@@ -6,6 +6,8 @@
 
 2026-11-17 实际连接检查：账户识别成功；读取 Access organization、Workers scripts 和 zones 均被 API 以 403 拒绝。连接缺少其接受的访问权限。
 
+用户调整权限后已再次读取 Access organization、Access apps、Workers scripts和zones，结果仍为403；当前连接提示需要重新授权接受的OAuth范围。ChatGPT中的操作确认设置无法代替Cloudflare服务侧的OAuth权限。
+
 继续云端验证需要 Cloudflare 连接至少具备 Workers 编辑/部署、Access 配置读取与维护，以及目标 Zone / DNS 的适当权限。具体使用最小权限配置；不需要把 token发到聊天中。
 
 ## 本地
