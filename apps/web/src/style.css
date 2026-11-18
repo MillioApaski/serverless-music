@@ -7,3 +7,8 @@
 /* Keep mobile decorations inside the visual viewport and nav hit targets in equal columns. */
 body{overflow-x:hidden}
 @media(max-width:760px){.hero{overflow:hidden}.sidebar nav{flex:1;min-width:0}.sidebar .nav-item{flex:1;width:auto;min-width:0}}
+
+.source-detail + .source-detail { margin-top: 12px; }
+.source-picker { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; font-size: 12px; }
+.source-picker select { font: inherit; color: inherit; background: white; border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; }
+.source-picker select:focus-visible { outline: 3px solid #aabfb2; outline-offset: 3px; }

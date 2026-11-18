@@ -1,1 +1,34 @@
-[]
+[
+  {
+    "id": "audio-test",
+    "name": "外部测试音源",
+    "version": "0.0.1",
+    "scriptUrl": "/sources/audio-test.js",
+    "sha256": "5c409983adbaf30fb6890d38217876135878c7f482ebcbe495f6dd30ee5487dd",
+    "enabled": true,
+    "supportedPlatforms": [
+      "local"
+    ],
+    "supportedQualities": [],
+    "supportedActions": [
+      "musicUrl"
+    ],
+    "allowedHosts": [
+      {
+        "host": "audio-test.convert-alpha.cc",
+        "pathPrefix": "/tone.wav",
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "headers": []
+      }
+    ],
+    "priority": 1,
+    "healthStatus": "untested",
+    "updatedAt": "2026-11-19T00:00:00+08:00",
+    "checkedAt": null,
+    "license": "MIT",
+    "authorization": "项目自行生成的测试旋律，由独立测试 Worker 提供。"
+  }
+]
