@@ -1,6 +1,6 @@
 # 部署与解除 Phase 0 阻塞
 
-用户已部署测试站点 https://music.convert-alpha.cc 。2026-11-18 已补充仓库生产 Access 配置：issuer 为 https://unknown22518.cloudflareaccess.com，audience 为该应用的 AUD。首页和 /api/me 的未登录请求均已观察到转向对应 Access 登录页。用户随后提供的截图已显示“Access 已验证”，并完成线上五项检查中的四项；HTTP Bridge 被缺失的限流绑定阻断。已登录链路有用户侧证据，但完整生产验收尚未完成。
+用户已部署测试站点 https://music.convert-alpha.cc 。2026-11-18 已补充仓库生产 Access 配置：issuer 为 https://unknown22518.cloudflareaccess.com，audience 为该应用的 AUD。首页和 /api/me 的未登录请求均已观察到转向对应 Access 登录页。用户随后确认已登录访问。补齐限流绑定后，线上五项检查全部通过，Direct 模式的自有测试音频可听并播完 18 秒。完整生产验收仍待测量 Workers CPU P95 并验证真实外部音源。
 
 配置提交：`d64a6680ee2b960cfb46b39c0406295a01d4123f`。若使用仓库自动部署，检查该提交或后续提交是否部署成功；否则手动部署最新 main。填入 issuer/audience 本身不会创建或修改 Access Allow 策略。
 
@@ -46,6 +46,6 @@ Wrangler 本地完整 Worker 预览：构建后运行 `pnpm worker:dev`。Vite �
 
 线上截图显示4/5检查通过，唯一失败项提示“请求限流尚未配置”。根因是Worker代码要求HTTP_LIMITER，但Wrangler缺少对应声明；本地适配器的local模式跳过限流，之前的浏览器测试未覆盖这个生产缺口。
 
-已增加原生rate-limit绑定、生产路由的缺失/放行/拒绝/共享用户额度测试，以及CI生产Wrangler打包检查。无需手工创建KV或D1。绑定随着最新main部署生效，需用户在已登录浏览器重跑验证确认线上结果。
+已增加原生rate-limit绑定、生产路由的缺失/放行/拒绝/共享用户额度测试，以及CI生产Wrangler打包检查。无需手工创建KV或D1。用户已在部署后登录复测，确认 HTTP Bridge 通过，全部五项检查通过。
 
 [Cloudflare官方限流绑定文档](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。

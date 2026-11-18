@@ -74,4 +74,18 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 
 新增绑定：HTTP_LIMITER，namespace_id=1461127045，120次/60秒；使用现有已验证用户ID作为key。Cloudflare按接入点近似限流。新增4项生产路由测试明确stub认证边界，检查缺绑定返回503、允许时Bridge成功、拒绝时429，以及Bridge/播放会话共享同一用户key；实际Access验签仍由既有安全用例覆盖。
 
-本地验证：70/70测试、类型检查、构建及Wrangler生产dry-run全部通过。Wrangler明确输出 env.HTTP_LIMITER (120 requests/60s) / Rate Limit。CI增加相同生产打包检查。尚未代为部署新版本，线上修复结果待用户重新部署及复测。
+本地验证：70/70测试、类型检查、构建及Wrangler生产dry-run全部通过。Wrangler明确输出 env.HTTP_LIMITER (120 requests/60s) / Rate Limit。CI增加相同生产打包检查。随后用户部署修复并完成线上复测，结果见下方。
+
+### 修复后线上复测
+
+用户在 `music.convert-alpha.cc` 登录后复测，浏览器检查 **5/5 通过**。用户确认自有测试音频可听，截图显示 Direct 播放进度达到 0:18 / 0:18。
+
+| 浏览器检查 | 结果 | 墙钟耗时 |
+| --- | --- | ---: |
+| QuickJS 初始化与 HTTP Bridge | 通过 | 2489 ms |
+| 宿主对象隔离 | 通过 | 365 ms |
+| 无限循环中断 | 通过 | 3370 ms |
+| 超时后的新实例恢复 | 通过 | 366 ms |
+| 自有音频 Range 字节读取 | 通过，206 / Content-Range / 64 字节 | 84 ms |
+
+证据来自用户截图和试听反馈。Workers CPU P95、真实第三方音源及外部 Proxy / Redirect 线上播放仍待验证。
