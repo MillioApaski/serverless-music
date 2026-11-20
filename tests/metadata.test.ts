@@ -13,9 +13,12 @@ const wyTrack = (id: number) => ({ id, name: `Track ${id}`, ar: [{ name: 'A' }, 
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('keeps healthy search results when one platform fails and deduplicates by native ID', async () => {
-  const fetcher = vi.fn(async (target: URL) => {
-    if (target.hostname === 'c.y.qq.com') return new Response(null, { status: 503 });
+it('keeps healthy search results when a platform redirects and deduplicates by native ID', async () => {
+  const fetcher = vi.fn(async (target: URL, init: RequestInit) => {
+    expect(init.redirect).toBe('manual');
+    if (target.hostname === 'c.y.qq.com') {
+      return Response.redirect('https://elsewhere.example/redirect');
+    }
     expect(target.hostname).toBe('music.163.com');
     expect(target.searchParams.get('s')).toBe('晴天 & 雨');
     expect(target.searchParams.get('offset')).toBe('20');

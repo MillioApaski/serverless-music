@@ -26,7 +26,8 @@ async function requestMetadata(origin: string, path: string, params: Record<stri
   url.search = new URLSearchParams(params).toString();
   try {
     const response = await fetch(url, {
-      redirect: 'error',
+      // Workers supports manual redirects. The status check below rejects any redirects.
+      redirect: 'manual',
       headers: { accept: 'application/json', referer: origin === wyOrigin ? wyOrigin + '/' : qqReferer },
       signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
     });
