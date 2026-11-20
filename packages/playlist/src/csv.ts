@@ -1,5 +1,5 @@
 import { AppError, type Track } from '../../core/src/index';
-import { importFile } from './import';
+import { importFile, type PlaylistSource } from './import';
 
 const columns = ['playlist', 'id', 'title', 'artists', 'album', 'duration', 'cover', 'isrc', 'identifiers'];
 const spreadsheetFormula = /^(?:[\t\r\n]|\s*[=+\-@＝＋－＠])/u;
@@ -68,7 +68,8 @@ function restoreCell(value: string): string {
 export function importCsv(text: string, fileName: string) {
   const [header = [], ...rows] = readRows(text.replace(/^\uFEFF/, ''));
   const names = header.map(value => value.trim().toLowerCase());
-  const ownFormat = names.length === columns.length && names.every((value, index) => value === columns[index]);
+  const hasSource = names.length === columns.length + 1 && names.at(-1) === 'source';
+  const ownFormat = (names.length === columns.length || hasSource) && columns.every((column, index) => names[index] === column);
   const positions = new Map(names.map((name, index) => [name, index]));
   if (positions.size !== names.length || !positions.has('title') || (!positions.has('artist') && !positions.has('artists'))) {
     throw new AppError('INVALID_CSV', 'CSV 表头需包含 title 和 artist 或 artists，且列名不能重复');
@@ -81,6 +82,7 @@ export function importCsv(text: string, fileName: string) {
   return importFile({
     name: (rows[0] && read(rows[0], 'playlist')) || fileName.slice(0, 200) || '导入歌单',
     platform: 'native',
+    source: ownFormat && hasSource && rows[0] ? jsonField(read(rows[0], 'source')) : undefined,
     tracks: rows.map((row, index) => {
       if (row.length !== names.length) return {};
       const duration = read(row, 'duration').trim();
@@ -105,11 +107,12 @@ function csvCell(value: string): string {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function exportCsv(name: string, tracks: Track[]): string {
+export function exportCsv(name: string, tracks: Track[], source?: PlaylistSource): string {
   const rows = tracks.map(track => [
     name, track.id, track.title, JSON.stringify(track.artists), track.album,
     String(track.duration ?? ''), track.cover ?? '', track.isrc ?? '',
-    JSON.stringify(track.identifiers),
+    JSON.stringify(track.identifiers), ...(source ? [JSON.stringify(source)] : []),
   ].map(csvCell).join(','));
-  return '\uFEFF' + [columns.join(','), ...rows].join('\r\n') + '\r\n';
+  const header = source ? [...columns, 'source'] : columns;
+  return '\uFEFF' + [header.join(','), ...rows].join('\r\n') + '\r\n';
 }

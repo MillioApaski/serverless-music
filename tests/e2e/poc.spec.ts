@@ -115,3 +115,39 @@ test('music search asks before saving a cross-platform match and excludes differ
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('serverless-music:metadata-links') ?? '{}')))
     .toEqual({ 'wy:11': 'tx:22', 'tx:22': 'wy:11' });
 });
+
+test('public profile selection imports a batch and retries only the failed playlist', async ({ page }) => {
+  const urls = ['https://music.163.com/playlist?id=12345', 'https://music.163.com/playlist?id=54321'];
+  const reads: string[] = [];
+  await page.route('**/api/playlists/profile', route => route.fulfill({json: {
+    nextOffset: null,
+    playlists: urls.map((url, index) => ({id: String(index), name: `公开歌单 ${index + 1}`, url, trackCount: 1})),
+  }}));
+  await page.route('**/api/playlists/import', async route => {
+    const { url } = route.request().postDataJSON() as { url: string };
+    reads.push(url);
+    const index = urls.indexOf(url);
+    if (index === 1 && reads.length === 2) {
+      await route.fulfill({status: 502, json: {error: {message: '平台暂时不可用'}}});
+      return;
+    }
+    await route.fulfill({json: {
+      name: `公开歌单 ${index + 1}`, total: 1, nextOffset: null, failures: [],
+      tracks: [{id: String(index), title: `批量曲目 ${index + 1}`, artists: ['测试歌手'], identifiers: []}],
+    }});
+  });
+  await page.getByRole('button', {name: '歌单导入', exact: true}).click();
+  await page.getByLabel('歌单分享链接').fill('https://music.163.com/#/user/home?id=1825474783');
+  await page.getByRole('button', {name: '查找公开歌单', exact: true}).click();
+  await page.getByRole('checkbox', {name: /公开歌单 1/}).check();
+  await page.getByRole('checkbox', {name: /公开歌单 2/}).check();
+  await page.getByRole('button', {name: '导入所选', exact: true}).click();
+  await expect(page.getByText('已完成 1 / 2 个歌单')).toBeVisible();
+  await page.getByRole('button', {name: /歌单 2.*平台暂时不可用/}).click();
+  await page.getByRole('button', {name: '重试当前歌单', exact: true}).click();
+  await expect(page.getByText('已完成 2 / 2 个歌单')).toBeVisible();
+  await expect(page.getByText('批量曲目 2', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: /公开歌单 1.*已读取/}).click();
+  await expect(page.getByText('批量曲目 1', {exact: true})).toBeVisible();
+  expect(reads).toEqual([urls[0], urls[1], urls[1]]);
+});

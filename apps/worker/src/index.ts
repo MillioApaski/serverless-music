@@ -9,8 +9,9 @@ import { httpBridge } from '../../../packages/stream-proxy/src/network';
 import { issueToken,verifyToken } from '../../../packages/stream-proxy/src/token';
 import { proxyAudio } from '../../../packages/stream-proxy/src/stream';
 import { authorizeTarget } from '../../../packages/source-sdk/src/policy';
-import { importFile,parsePlaylistLink } from '../../../packages/playlist/src/import';
-import { metadataPlatform, metadataPlatforms, metadataProviders, playlistTrackLimit } from '../../../packages/playlist/src/providers';
+import { importFile } from '../../../packages/playlist/src/import';
+import { playlistUrl, resolvePublicLink } from '../../../packages/playlist/src/links';
+import { getPublicPlaylist,metadataPlatform, metadataPlatforms, metadataProviders, playlistTrackLimit } from '../../../packages/playlist/src/providers';
 import registry from '../../../sources/registry/sources.json';
 interface Env extends AuthEnv {ASSETS?:Fetcher;STREAM_SECRET?:string;HTTP_LIMITER?:{limit(input:{key:string}):Promise<{success:boolean}>}}
 const sources:Source[]=z.array(ManifestSchema).parse(registry);
@@ -34,7 +35,7 @@ async function sourceById(id:string){if(id==='poc-owned')return fixtureManifest(
 async function rateLimit(c:any){if(c.env.APP_ENV==='local')return;if(!c.env.HTTP_LIMITER)throw new AppError('LIMITER_CONFIGURATION','请求限流尚未配置',503);if(!(await c.env.HTTP_LIMITER.limit({key:c.get('identity').id})).success)throw new AppError('RATE_LIMITED','请求过于频繁',429)}
 const exactFixture=(url:string,origin:string)=>testTracks.find(track=>url===origin+track.audioPath);
 app.get('/api/me',c=>c.json(c.get('identity')));
-app.get('/api/status',c=>c.json({phase:2,completedPhases:[0,1],productionReady:false,blockers:['尚未接入获得授权的真实第三方音源','Access 专项验收与长期内存测试延期'],identity:c.get('identity').mode,features:{quickjs:'poc',httpBridge:'poc',range:'poc',playlist:'public-links-json-csv',metadata:'wy-tx'}}));
+app.get('/api/status',c=>c.json({phase:2,completedPhases:[0,1,2],productionReady:false,blockers:['尚未接入获得授权的真实第三方音源','Access 专项验收与长期内存测试延期'],identity:c.get('identity').mode,features:{quickjs:'poc',httpBridge:'poc',range:'poc',playlist:'public-links-batch-json-csv',metadata:'wy-tx'}}));
 app.get('/api/sources',async c=>c.json({sources:[await fixtureManifest(),...sources]}));
 app.get('/api/fixtures/source.js',c=>c.body(sourceScript,200,{'content-type':'text/javascript; charset=utf-8'}));
 for(const track of testTracks){
@@ -75,7 +76,11 @@ app.get('/api/redirect/:token',async c=>{
  return c.redirect(data.url,302);
 });
 app.post('/api/playlists/preview',async c=>c.json(importFile(await c.req.json())));
-app.post('/api/playlists/identify',async c=>c.json(parsePlaylistLink(z.object({url:z.string()}).parse(await c.req.json()).url)));
+app.post('/api/playlists/identify',async c=>{
+ const {url}=z.object({url:z.string().max(2048)}).strict().parse(await c.req.json());
+ await rateLimit(c);
+ return c.json(await resolvePublicLink(url,'playlist',c.req.raw.signal));
+});
 const searchInput=z.object({query:z.string().trim().min(1).max(100),platform:metadataPlatform.or(z.literal('all')).default('all'),page:z.number().int().min(1).max(100).default(1)}).strict();
 app.post('/api/metadata/search',async c=>{
  const input=searchInput.parse(await c.req.json());
@@ -92,12 +97,19 @@ app.post('/api/metadata/search',async c=>{
  }));
  return c.json({page:input.page,results},results.every(result=>result.error)?502:200);
 });
-const playlistInput=z.object({url:z.string(),offset:z.number().int().min(0).max(playlistTrackLimit-1).default(0)}).strict();
+const playlistInput=z.object({url:z.string().max(2048),offset:z.number().int().min(0).max(playlistTrackLimit-1).default(0),cursor:z.string().min(1).max(128).optional()}).strict();
 app.post('/api/playlists/import',async c=>{
  const input=playlistInput.parse(await c.req.json());
- const {platform,id}=parsePlaylistLink(input.url);
  await rateLimit(c);
- const result=await metadataProviders[platform].getPlaylist(id,input.offset,c.req.raw.signal);
+ const {platform,id}=await resolvePublicLink(input.url,'playlist',c.req.raw.signal);
+ const result=await getPublicPlaylist(platform,id,input.offset,c.req.raw.signal,input.cursor);
+ return c.json({platform,id,source:{platform,id,url:playlistUrl(platform,id)},...result});
+});
+app.post('/api/playlists/profile',async c=>{
+ const input=playlistInput.parse(await c.req.json());
+ await rateLimit(c);
+ const {platform,id}=await resolvePublicLink(input.url,'profile',c.req.raw.signal);
+ const result=await metadataProviders[platform].getUserPlaylists(id,input.offset,c.req.raw.signal);
  return c.json({platform,id,...result});
 });
 app.all('/api/*',c=>c.json(errorBody('NOT_FOUND','接口不存在'),404));

@@ -2,20 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Download, FileJson, Music2 } from 'lucide-react';
 import { importFile } from '../../../packages/playlist/src/import';
 import { exportCsv, importCsv } from '../../../packages/playlist/src/csv';
-import type { PlaylistPage } from '../../../packages/playlist/src/providers';
-import type { Track } from '../../../packages/core/src/index';
+import { playlistUrl } from '../../../packages/playlist/src/links';
+import type { ProfilePage } from '../../../packages/playlist/src/providers';
+import { batchLimit, playlistRequest, usePlaylistBatch, type Preview } from './playlist-batch';
 
 const pageSize = 50;
-type RemoteImport = {
-  url: string;
-  name: string;
-  total: number;
-  next: number | null;
-  tracks: Map<string, Track>;
-  failures: PlaylistPage['failures'];
-  duplicates: number;
-  fingerprints: Set<string>;
-};
 const exampleText = JSON.stringify({
   name: '我的测试歌单',
   platform: 'tx',
@@ -30,33 +21,37 @@ const exampleText = JSON.stringify({
 
 export function PlaylistImport() {
   const [text, setText] = useState('');
-  const [preview, setPreview] = useState<ReturnType<typeof importFile>>();
+  const [filePreview, setFilePreview] = useState<Preview>();
   const [note, setNote] = useState('');
   const [page, setPage] = useState(0);
   const [link, setLink] = useState('');
   const [linkNote, setLinkNote] = useState('');
-  const [remotePending, setRemotePending] = useState(false);
-  const [canResume, setCanResume] = useState(false);
+  const batch = usePlaylistBatch();
+  const activeJob = batch.jobs[batch.selected];
+  const preview = activeJob?.preview ?? filePreview;
+  const [profile, setProfile] = useState<ProfilePage>();
+  const [checked, setChecked] = useState<string[]>([]);
+  const [profilePending, setProfilePending] = useState(false);
+  const [profileNote, setProfileNote] = useState('');
   const fileRevision = useRef(0);
-  const remoteRequest = useRef<AbortController | null>(null);
-  const remoteProgress = useRef<RemoteImport | null>(null);
-  useEffect(() => () => remoteRequest.current?.abort(), []);
+  const profileRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => profileRequest.current?.abort(), []);
 
-  function resetRemote() {
-    remoteRequest.current?.abort();
-    remoteRequest.current = null;
-    remoteProgress.current = null;
-    setRemotePending(false);
-    setCanResume(false);
-    setLinkNote('');
+  function resetProfile() {
+    profileRequest.current?.abort();
+    profileRequest.current = null;
+    setProfile(undefined);
+    setChecked([]);
+    setProfilePending(false);
+    setProfileNote('');
   }
 
   function prepare(parse: () => ReturnType<typeof importFile>) {
     setPage(0);
-    setPreview(undefined);
+    setFilePreview(undefined);
     try {
       const result = parse();
-      setPreview(result);
+      setFilePreview(result);
       setNote(`${result.tracks.length} 首已读取 · ${result.duplicates} 首重复 · ${result.failures.length} 首失败`);
     } catch (error) {
       setNote(String(error));
@@ -64,16 +59,16 @@ export function PlaylistImport() {
   }
 
   function previewJson(value: string) {
-    resetRemote();
+    batch.reset();
     fileRevision.current++;
     prepare(() => importFile(JSON.parse(value.replace(/^\uFEFF/, ''))));
   }
 
   async function loadFile(file?: File) {
     if (!file) return;
-    resetRemote();
+    batch.reset();
     const revision = ++fileRevision.current;
-    setPreview(undefined);
+    setFilePreview(undefined);
     setNote('正在读取文件…');
     setText('');
     if (file.size > 8 * 1024 * 1024) {
@@ -97,10 +92,10 @@ export function PlaylistImport() {
 
   function download(format: 'json' | 'csv') {
     if (!preview) return;
-    const { name, tracks } = preview;
+    const { name, tracks, source } = preview;
     const content = format === 'json'
-      ? JSON.stringify({ name, platform: 'native', tracks }, null, 2)
-      : exportCsv(name, tracks);
+      ? JSON.stringify({ name, platform: 'native', source, tracks }, null, 2)
+      : exportCsv(name, tracks, source);
     const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -110,86 +105,51 @@ export function PlaylistImport() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function importLink(resume = false) {
-    if (remoteRequest.current || (resume && !remoteProgress.current)) return;
+  function startImport(urls: string[]) {
+    if (!urls.length || batch.pending) return;
+    if (urls.length > batchLimit) {
+      setLinkNote(`每批最多导入 ${batchLimit} 个歌单`);
+      return;
+    }
     fileRevision.current++;
-    const controller = new AbortController();
-    remoteRequest.current = controller;
-    setRemotePending(true);
-    setCanResume(false);
-    setLinkNote('正在读取歌单…');
+    setText('');
+    setPage(0);
+    setFilePreview(undefined);
     setNote('');
-    if (!resume) {
-      setText('');
-      setPage(0);
-      setPreview(undefined);
-      remoteProgress.current = {
-        url: link.trim(), name: '', total: 0, next: 0, tracks: new Map(),
-        failures: [], duplicates: 0, fingerprints: new Set(),
-      };
+    setLinkNote('');
+    batch.start(urls);
+  }
+
+  async function loadProfile(offset = 0) {
+    if (profileRequest.current) return;
+    const controller = new AbortController();
+    profileRequest.current = controller;
+    setProfilePending(true);
+    setProfileNote('');
+    if (!offset) {
+      setChecked([]);
+      setProfile(undefined);
     }
-    const progress = remoteProgress.current;
     try {
-      if (!progress) return;
-      while (progress.next !== null) {
-        const offset: number = progress.next;
-        const response = await fetch('/api/playlists/import', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ url: progress.url, offset }),
-          signal: controller.signal,
-        });
-        const data = await response.json() as PlaylistPage & { error?: { message: string } };
-        if (controller.signal.aborted) return;
-        if (!response.ok) throw new Error(data.error?.message ?? '平台歌单读取失败');
-        if (offset && (progress.name !== data.name || progress.total !== data.total)) {
-          throw new Error('远程歌单已发生变更，请重新导入');
-        }
-        const received = data.tracks.length + data.failures.length;
-        const end = offset + received;
-        if (end > data.total || (data.nextOffset === null ? end !== data.total : received === 0 || data.nextOffset !== end)) {
-          throw new Error('平台返回了不完整的分页结果');
-        }
-        const fingerprint = JSON.stringify(data.tracks.map(track => track.id));
-        if (data.tracks.length > 1 && progress.fingerprints.has(fingerprint)) {
-          throw new Error('平台重复返回了同一页曲目，请重试');
-        }
-        if (data.tracks.length > 1) progress.fingerprints.add(fingerprint);
-
-        for (const track of data.tracks) {
-          if (progress.tracks.has(track.id)) progress.duplicates++;
-          else progress.tracks.set(track.id, track);
-        }
-        progress.failures.push(...data.failures);
-        progress.name = data.name;
-        progress.total = data.total;
-        progress.next = data.nextOffset;
-        setPreview({
-          name: progress.name, total: end, duplicates: progress.duplicates,
-          tracks: [...progress.tracks.values()], failures: [...progress.failures],
-        });
-        setLinkNote(`已读取 ${end} / ${data.total} 首 · ${progress.duplicates} 首重复 · ${progress.failures.length} 首失败`);
-      }
+      const result = await playlistRequest<ProfilePage>('profile', link.trim(), offset, controller.signal);
+      controller.signal.throwIfAborted();
+      if (result.nextOffset !== null && result.nextOffset <= offset) throw new Error('平台未能返回下一页');
+      setProfile(previous => {
+        const list = new Map(previous && offset ? previous.playlists.map(item => [item.id, item]) : []);
+        for (const item of result.playlists) list.set(item.id, item);
+        return { playlists: [...list.values()], nextOffset: result.nextOffset };
+      });
     } catch (error) {
-      if (!controller.signal.aborted) {
-        const message = error instanceof Error ? error.message : '平台歌单读取失败';
-        setLinkNote(progress?.next ? `已保留前 ${progress.next} 首的结果。 ${message}` : message);
-        setCanResume(progress?.next != null);
-      }
+      if (!controller.signal.aborted) setProfileNote(error instanceof Error ? error.message : '主页读取失败');
     } finally {
-      if (remoteRequest.current === controller) {
-        remoteRequest.current = null;
-        setRemotePending(false);
+      if (profileRequest.current === controller) {
+        profileRequest.current = null;
+        setProfilePending(false);
       }
     }
   }
 
-  function stopImport() {
-    remoteRequest.current?.abort();
-    setCanResume(remoteProgress.current?.next != null);
-    setLinkNote('已暂停导入，可从当前页继续');
-  }
-
+  const links = [...new Set(link.match(/https?:\/\/[^\s<>"‘’“”【】()（）]+/gi) ?? [link.trim()])].filter(Boolean);
   const totalPages = Math.ceil((preview?.tracks.length ?? 0) / pageSize);
   return <>
     <h1 className="page-title">歌单导入</h1>
@@ -202,10 +162,10 @@ export function PlaylistImport() {
         </div>
         <label htmlFor="playlist-json" className="hint">粘贴含 name、platform 和 tracks 的 JSON</label>
         <textarea id="playlist-json" value={text} onChange={event => {
-          resetRemote();
+          batch.reset();
           fileRevision.current++;
           setText(event.target.value);
-          setPreview(undefined);
+          setFilePreview(undefined);
           setNote('');
         }}/>
         <div className="import-actions">
@@ -227,25 +187,70 @@ export function PlaylistImport() {
         <p>首行包含 title 和 artist 两列，专辑和时长可用 album 和 duration，时长以秒计。</p>
         <div className="subtle-line"/>
         <h3>从分享链接导入</h3>
-        <p>粘贴网易云音乐或 QQ 音乐的公开歌单链接。</p>
-        <form onSubmit={event => { event.preventDefault(); void importLink(); }}>
+        <p>支持网易云、QQ 音乐、酷我、咪咕和汽水的歌单。网易云与 QQ 音乐可从公开主页选歌单。</p>
+        <form onSubmit={event => { event.preventDefault(); startImport(links); }}>
           <label className="sr-only" htmlFor="playlist-link">歌单分享链接</label>
-          <input id="playlist-link" value={link} onChange={event => {
-            resetRemote();
+          <textarea id="playlist-link" value={link} onChange={event => {
+            resetProfile();
+            setLinkNote('');
             setLink(event.target.value);
-          }} maxLength={2048} placeholder="粘贴歌单链接"/>
+          }} maxLength={batchLimit * 2048} placeholder="粘贴歌单、短链或公开主页" rows={3}/>
           <div className="playlist-actions">
-            <button className="primary" disabled={!link.trim() || remotePending}>导入链接</button>
-            {remotePending && <button className="secondary" type="button" onClick={stopImport}>暂停导入</button>}
-            {canResume && !remotePending &&
-              <button className="secondary" type="button" onClick={() => void importLink(true)}>继续导入</button>}
+            <button className="primary" disabled={!links.length || batch.pending}>导入链接</button>
+            <button className="secondary" type="button" disabled={links.length !== 1 || profilePending || batch.pending}
+              onClick={() => void loadProfile()}>查找公开歌单</button>
           </div>
         </form>
-        <p className="hint" role="status">{linkNote}</p>
+        {linkNote && <p className="hint" role="status">{linkNote}</p>}
+        {profilePending && <p className="hint" role="status">正在读取公开歌单…</p>}
+        {profileNote && <p className="hint" role="status">{profileNote}</p>}
+        {profile && <section className="playlist-profile" aria-label="公开歌单">
+          <p className="hint">{profile.playlists.length ? `已选 ${checked.length} / ${batchLimit} 个` : '本页没有公开歌单'}</p>
+          {profile.playlists.map(item => <label key={item.id} className="profile-playlist">
+            <input type="checkbox" checked={checked.includes(item.url)}
+              disabled={!checked.includes(item.url) && checked.length >= batchLimit}
+              onChange={event => setChecked(event.currentTarget.checked ? [...checked, item.url] : checked.filter(url => url !== item.url))}/>
+            <span>{item.name}</span><small>{item.trackCount} 首</small>
+          </label>)}
+          <div className="playlist-actions">
+            <button className="primary" disabled={!checked.length || batch.pending}
+              onClick={() => startImport(checked)}>导入所选</button>
+            {profile.nextOffset !== null && <button className="secondary" disabled={profilePending}
+              onClick={() => void loadProfile(profile.nextOffset ?? 0)}>更多歌单</button>}
+          </div>
+        </section>}
+
       </section>
     </div>
+    {batch.jobs.length > 0 && <section aria-label="导入进度">
+      <div className="section-heading"><h2>导入进度</h2><span>已完成 {batch.jobs.length - batch.remaining.length} / {batch.jobs.length} 个歌单</span></div>
+      {batch.jobs.length > 1 && <div className="playlist-jobs">
+        {batch.jobs.map((job, index) => <button className="secondary" key={job.url}
+          aria-pressed={batch.selected === index} onClick={() => { batch.select(index); setPage(0); }}>
+          <strong>{job.preview?.name ?? `歌单 ${index + 1}`}</strong><small>{job.note}</small>
+        </button>)}
+      </div>}
+      <p role="status" className="hint">{activeJob?.note}</p>
+      <div className="playlist-actions">
+        {batch.pending && <button className="secondary" onClick={batch.pause}>暂停导入</button>}
+        {!batch.pending && batch.remaining.length > 0 &&
+          <button className="secondary" onClick={batch.resume}>继续导入</button>}
+        {!batch.pending && batch.jobs.length > 1 && (activeJob?.phase === 'failed' || activeJob?.phase === 'paused') &&
+          <button className="secondary" onClick={batch.retry}>重试当前歌单</button>}
+        {!batch.pending && (activeJob?.phase === 'done' || activeJob?.preview) &&
+          <button className="secondary" onClick={() => { setPage(0); batch.refresh(); }}>重新同步当前歌单</button>}
+      </div>
+    </section>}
     {preview && <>
       <div className="section-heading"><h2>{preview.name}</h2><span>{preview.total} 首原始曲目</span></div>
+      {preview.source && <div className="playlist-actions">
+        <a className="secondary" href={playlistUrl(preview.source.platform, preview.source.id)} target="_blank" rel="noreferrer">查看原歌单</a>
+        {!activeJob && <button className="secondary" onClick={() => {
+          const source = preview.source;
+          if (source) startImport([playlistUrl(source.platform, source.id)]);
+        }}>重新同步歌单</button>}
+      </div>}
+
       {preview.failures.length > 0 && <details className="import-failures">
         <summary>{preview.failures.length} 首曲目导入失败</summary>
         <ol>{preview.failures.map(failure =>

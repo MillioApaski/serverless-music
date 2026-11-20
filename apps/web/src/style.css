@@ -52,3 +52,12 @@ body{overflow-x:hidden}
 .metadata-track{gap:10px}
 .metadata-track button{padding:7px 9px;flex-shrink:0}
 @media(max-width:760px){.nav-item{padding-inline:5px}}
+#playlist-link{display:block;width:100%;min-height:5.5rem;resize:vertical;padding:.65rem;border:1px solid #dfe3e6;border-radius:5px;font:inherit}
+.playlist-profile{max-height:20rem;overflow:auto;padding:.25rem}
+.profile-playlist{display:flex;align-items:center;gap:.6rem;padding:.45rem 0;font-size:.83rem}
+.profile-playlist span{min-width:0;overflow-wrap:anywhere;flex:1}
+.profile-playlist small{white-space:nowrap}
+.playlist-jobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(215px,100%),1fr));gap:.5rem}
+.playlist-jobs button{flex-direction:column;align-items:flex-start;text-align:left;white-space:normal}
+.playlist-jobs button[aria-pressed=true]{border-color:var(--accent);background:#ebf0eb}
+.playlist-jobs small{overflow-wrap:anywhere}

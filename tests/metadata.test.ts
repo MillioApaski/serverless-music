@@ -94,3 +94,94 @@ it('uses native ID, ISRC and corroborating metadata while keeping versions separ
   expect(compareTracks(withCode, { ...candidate, isrc: 'USABC2412345' })).toBe('isrc');
   expect(compareTracks(withCode, { ...candidate, isrc: 'USABC2412346' })).toBe('different');
 });
+
+it('expands a QQ short link once and returns a canonical source for later pages', async () => {
+  const fetcher = vi.fn(async (target: URL, init: RequestInit) => {
+    expect(init.redirect).toBe('manual');
+    if (target.hostname === 'c6.y.qq.com') {
+      return Response.redirect('https://i.y.qq.com/n2/m/share/details/taoge.html?id=9138517540');
+    }
+    expect(target.hostname).toBe('c.y.qq.com');
+    expect(target.searchParams.get('disstid')).toBe('9138517540');
+    return Response.json({code: 0, cdlist: [{disstid: '9138517540', dissname: 'QQ sample', songnum: 0}]});
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const res = await post('/api/playlists/import', {url: '分享歌单 https://c6.y.qq.com/base/fcgi-bin/u?__=sample'});
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({
+    source: {id: '9138517540', platform: 'tx', url: 'https://y.qq.com/n/ryqq/playlist/9138517540'},
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('rejects a short link redirect to a host outside the provider before the next request', async () => {
+  const fetcher = vi.fn(async () => Response.redirect('https://example.com/playlist?id=12345'));
+  vi.stubGlobal('fetch', fetcher);
+  const res = await post('/api/playlists/import', {url: 'https://163cn.tv/sample'});
+  expect(res.status).toBe(422);
+  expect(await res.json()).toMatchObject({error: {code: 'SHORTLINK_UNAVAILABLE'}});
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('expands a NetEase profile short link and excludes private results without skipping the upstream offset', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (target: URL) => {
+    if (target.hostname === '163cn.tv') return Response.redirect('https://y.music.163.com/m/user?id=1825474783');
+    expect(target.pathname).toBe('/api/user/playlist/');
+    expect(target.searchParams.get('uid')).toBe('1825474783');
+    expect(target.searchParams.get('offset')).toBe('25');
+    return Response.json({code: 200, more: true, playlist: [
+      {id: 2756674066, name: '公开歌单', trackCount: 613, privacy: 0},
+      {id: 2255852155, name: '私人歌单', trackCount: 27, privacy: 10},
+    ]});
+  }));
+  const res = await post('/api/playlists/profile', {url: 'https://163cn.tv/sample', offset: 25});
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({
+    playlists: [{id: '2756674066', name: '公开歌单', trackCount: 613}],
+    nextOffset: 27,
+  });
+});
+
+it('keeps the Migu page size, native song ID and exported playlist source', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (target: URL) => {
+    expect(target.hostname).toBe('c.musicapp.migu.cn');
+    if (target.pathname.includes('/song/')) {
+      expect(target.searchParams.get('pageNo')).toBe('2');
+      return Response.json({code: '000000', data: {totalCount: 51, songList: [{
+        songId: '1004665871', songName: '推开世界的门', singerList: [{name: '杨乃文'}],
+      }]}});
+    }
+    return Response.json({code: '000000', data: {musicListId: '236858196', title: '咪咕歌单'}});
+  }));
+  const response = await post('/api/playlists/import', {
+    url: 'https://music.migu.cn/v5/#/playlist/236858196', offset: 50,
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    source: {platform: 'mg', id: '236858196'}, total: 51, nextOffset: null,
+    tracks: [{id: 'mg:1004665871', title: '推开世界的门'}],
+  });
+});
+
+it('accepts a terminal Soda Music page that omits has_more and keeps 19-digit IDs exact', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (target: URL, init: RequestInit) => {
+    expect(target.hostname).toBe('beta-luna.douyin.com');
+    expect(JSON.parse(String(init.body))).toMatchObject({playlist_id: '7589791451954135055', cursor: '975'});
+    return Response.json({
+      playlist: {id: '7589791451954135055', title: '汽水歌单', count_tracks: 627, type: 2},
+      next_cursor: '1000',
+      media_resources: Array.from({length: 22}, (_, index) => ({
+        entity: {track_wrapper: {track: {id: `76746546819838464${index + 10}`, name: '测试曲目', duration: 234000}}},
+      })),
+    });
+  }));
+  const response = await post('/api/playlists/import', {
+    url: 'https://www.qishui.com/share/playlist?playlist_id=7589791451954135055',
+    offset: 605, cursor: '975',
+  });
+  expect(response.status).toBe(200);
+  const data = await response.json() as {tracks: Track[]};
+  expect(data).toMatchObject({total: 627, nextOffset: null});
+  expect(data.tracks).toHaveLength(22);
+  expect(data.tracks[0]).toMatchObject({id: 'qishui:7674654681983846410', duration: 234});
+});
