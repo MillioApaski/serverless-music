@@ -88,4 +88,20 @@ HTTP传输是受控fixture函数；WASM及Promise调度是真实执行。统计�
 | 超时后的新实例恢复 | 通过 | 366 ms |
 | 自有音频 Range 字节读取 | 通过，206 / Content-Range / 64 字节 | 84 ms |
 
-证据来自用户截图和试听反馈。Workers CPU P95、真实第三方音源及外部 Proxy / Redirect 线上播放仍待验证。
+证据来自用户截图和试听反馈。
+
+## 2026-11-20 云端测试及 Phase 0 收尾
+
+独立测试 Worker 提供自有 WAV。线上 Redirect 返回 302，Proxy 的 `Range: bytes=0-63` 返回 206、`Content-Range: bytes 0-63/576044` 和 64 字节正文。
+
+| Cloudflare Workers 请求 | 样本 | CPU P95 | CPU 最大值 | 成功响应 |
+| --- | ---: | ---: | ---: | ---: |
+| 创建播放会话 | 60 | 4 ms | 14 ms | 60 × 200 |
+| Redirect | 30 | 2 ms | 3 ms | 30 × 302 |
+| Proxy 64 字节 Range | 30 | 4 ms | 7 ms | 30 × 206 |
+| Proxy 完整 WAV，串行 | 30 | 2 ms | 2 ms | 30 × 200 |
+| Proxy 完整 WAV，五路并发 | 30 | 2 ms | 5 ms | 30 × 200 |
+
+统计使用 Cloudflare 调用日志的 CPU 毫秒值。完整下载每次读取 576044 字节。各组 P95 均低于 6 ms。
+
+Phase 0 按用户确认的范围收尾。真实音源接入、Access 专项验收与长期内存测试延期。

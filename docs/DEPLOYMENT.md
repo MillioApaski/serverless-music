@@ -1,16 +1,6 @@
-# 部署与解除 Phase 0 阻塞
+# 部署与云端验证
 
-用户已部署测试站点 https://music.convert-alpha.cc 。2026-11-18 已补充仓库生产 Access 配置：issuer 为 https://unknown22518.cloudflareaccess.com，audience 为该应用的 AUD。首页和 /api/me 的未登录请求均已观察到转向对应 Access 登录页。用户随后确认已登录访问。补齐限流绑定后，线上五项检查全部通过，Direct 模式的自有测试音频可听并播完 18 秒。完整生产验收仍待测量 Workers CPU P95 并验证真实外部音源。
-
-配置提交：`d64a6680ee2b960cfb46b39c0406295a01d4123f`。若使用仓库自动部署，检查该提交或后续提交是否部署成功；否则手动部署最新 main。填入 issuer/audience 本身不会创建或修改 Access Allow 策略。
-
-## 当前权限阻塞
-
-2026-11-17 实际连接检查：账户识别成功；读取 Access organization、Workers scripts 和 zones 均被 API 以 403 拒绝。连接缺少其接受的访问权限。
-
-用户调整权限后已再次读取 Access organization、Access apps、Workers scripts和zones，结果仍为403；当前连接提示需要重新授权接受的OAuth范围。ChatGPT中的操作确认设置无法代替Cloudflare服务侧的OAuth权限。
-
-继续云端验证需要 Cloudflare 连接至少具备 Workers 编辑/部署、Access 配置读取与维护，以及目标 Zone / DNS 的适当权限。具体使用最小权限配置；不需要把 token发到聊天中。
+测试站点为 https://music.convert-alpha.cc 。Access 已配置用于测试站登录，线上浏览器技术验证为 5/5。自有测试音源的 Direct、Redirect、Proxy 和 Workers CPU 测量结果见 [Phase 0 测试报告](TEST_REPORT.md)。正式音源、Access 专项及长期内存验收按阶段继续。
 
 ## 本地
 

@@ -32,7 +32,7 @@ async function sourceById(id:string){if(id==='poc-owned')return fixtureManifest(
 async function rateLimit(c:any){if(c.env.APP_ENV==='local')return;if(!c.env.HTTP_LIMITER)throw new AppError('LIMITER_CONFIGURATION','请求限流尚未配置',503);if(!(await c.env.HTTP_LIMITER.limit({key:c.get('identity').id})).success)throw new AppError('RATE_LIMITED','请求过于频繁',429)}
 const exactFixture=(url:string,origin:string)=>url===`${origin}/api/fixtures/tone.wav`;
 app.get('/api/me',c=>c.json(c.get('identity')));
-app.get('/api/status',c=>c.json({phase:0,productionReady:false,blockers:['Cloudflare Workers / Access 权限不足','尚未接入获得授权的真实第三方音源','真实平台歌单端点及云端 CPU P95 尚未验证'],identity:c.get('identity').mode,features:{quickjs:'poc',httpBridge:'poc',range:'poc',playlist:'local-json'}}));
+app.get('/api/status',c=>c.json({phase:1,completedPhases:[0],productionReady:false,blockers:['尚未接入获得授权的真实第三方音源','Access 专项验收与长期内存测试延期','真实平台歌单端点尚未验证'],identity:c.get('identity').mode,features:{quickjs:'poc',httpBridge:'poc',range:'poc',playlist:'local-json'}}));
 app.get('/api/sources',async c=>c.json({sources:[await fixtureManifest(),...sources]}));
 app.get('/api/fixtures/source.js',c=>c.body(sourceScript,200,{'content-type':'text/javascript; charset=utf-8'}));
 app.on(['GET','HEAD'],'/api/fixtures/tone.wav',c=>toneResponse(c.req.raw));
