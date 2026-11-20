@@ -1,3 +1,4 @@
+import { exportCsv, importCsv } from '../packages/playlist/src/csv';
 import {describe,it,expect} from 'vitest';
 import {app} from '../apps/worker/src/index';
 import {toneResponse} from '../apps/worker/src/fixtures';
@@ -46,4 +47,28 @@ describe('playlist metadata preservation',()=>{
  it('preserves QQ songmid and original fields without playback URL',()=>{const track=normalizePlatformTrack('tx',{songmid:'mid-123',songid:123,songname:'Test',singer:[{name:'Artist'}],file:{media_mid:'media-original'}},1);expect(track.identifiers[0].id).toBe('mid-123');expect(track.identifiers[0].raw?.file).toEqual({media_mid:'media-original'});expect(track).not.toHaveProperty('playbackUrl')});
  it('keeps versions distinct and reports invalid items',()=>{const result=importFile({name:'My songs',platform:'wy',tracks:[{id:1,name:'Song',ar:[{name:'A'}]},{id:2,name:'Song (Live)',ar:[{name:'A'}]},{id:1,name:'Song'},{name:'Missing ID'}]});expect(result.tracks).toHaveLength(2);expect(result.duplicates).toBe(1);expect(result.failures).toHaveLength(1)});
  it('recognizes exact platform URLs and rejects malicious hosts',()=>{expect(parsePlaylistLink('https://music.163.com/#/playlist?id=12345')).toEqual({platform:'wy',id:'12345'});expect(parsePlaylistLink('https://y.qq.com/n/ryqq/playlist/123456')).toEqual({platform:'tx',id:'123456'});expect(()=>parsePlaylistLink('https://y.qq.com.evil.example/playlist/123456')).toThrow();expect(()=>parsePlaylistLink('https://music.163.com/#/user/home?id=12345')).toThrow()});
+});
+
+describe('playlist CSV', () => {
+ it('round-trips quoted, multiline and spreadsheet-sensitive metadata with native IDs', () => {
+  const track = {
+   id: 'wy:42', title: '=1+2, "现场"\n返场', artists: ['林, 甲', '乙'], album: "'原声'",
+   duration: 30.5, cover: 'https://example.com/cover.png', isrc: 'TEST001',
+   identifiers: [{ platform: 'wy' as const, id: '42', raw: { id: 42 } }],
+  };
+  const csv = exportCsv('@测试', [track]);
+  expect(csv).toContain("\"'@测试\"");
+  expect(csv).toContain("\"'=1+2");
+  const imported = importCsv(csv, '备用名称');
+  expect(imported).toMatchObject({ name: '@测试', tracks: [track], failures: [] });
+ });
+
+ it('accepts simple CSV and reports malformed rows and duplicate IDs', () => {
+  const input = '\uFEFFtitle,artist,id,duration\r\n第一首,歌手,a,18\r\n重复,歌手,a,18\r\n坏数据,歌手,b,x\r\n';
+  expect(importCsv(input, '列表')).toMatchObject({
+   name: '列表', total: 3, duplicates: 1, failures: [{ index: 2 }],
+   tracks: [{ id: 'a', title: '第一首', duration: 18 }],
+  });
+  expect(() => importCsv('title,artist\n"未关闭', '列表')).toThrow('未闭合');
+ });
 });

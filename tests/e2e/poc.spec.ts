@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises';
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({page})=>{
  await page.goto('/');
@@ -34,4 +35,32 @@ test('playback queue can schedule the next track and persist playback settings',
  await page.reload();
  await page.getByRole('button',{name:'播放队列',exact:true}).click();
  await expect(queue.getByLabel('播放顺序')).toHaveValue('repeat-all');
+});
+
+test('CSV import pages through results and downloads both formats', async ({ page }) => {
+  await page.getByRole('button', { name: '歌单导入', exact: true }).click();
+  const rows = Array.from({ length: 51 }, (_, index) => `曲目 ${index + 1},测试歌手`);
+  await page.getByLabel('选择 JSON 或 CSV').setInputFiles({
+    name: '测试歌单.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(['title,artist', ...rows, '缺少歌手,'].join('\n')),
+  });
+  await expect(page.getByRole('status').filter({ hasText: '51 首已读取' })).toContainText('1 首失败');
+  await expect(page.getByText('曲目 51', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '下一页', exact: true }).click();
+  await expect(page.getByText('曲目 51', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeDisabled();
+
+  for (const format of ['JSON', 'CSV']) {
+    const downloaded = page.waitForEvent('download');
+    await page.getByRole('button', { name: `导出 ${format}`, exact: true }).click();
+    const file = await downloaded;
+    expect(file.suggestedFilename()).toBe(`测试歌单.${format.toLowerCase()}`);
+    await page.getByLabel('选择 JSON 或 CSV').setInputFiles({
+      name: file.suggestedFilename(),
+      mimeType: format === 'JSON' ? 'application/json' : 'text/csv',
+      buffer: await readFile(await file.path()),
+    });
+    await expect(page.getByRole('status').filter({ hasText: '51 首已读取' })).toContainText('0 首失败');
+  }
 });

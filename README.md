@@ -2,9 +2,9 @@
 
 部署在 Cloudflare Workers 上的多音源音乐播放器。
 
-**当前状态：Phase 0 已按约定范围完成，Phase 1 基础播放器开发中。**
+**当前状态：Phase 0 已按约定范围完成，Phase 1 基础播放器已完成，Phase 2 元数据与歌单开发中。**
 
-工程包含真正的 QuickJS Release WASM 沙箱、Web Worker 宿主、LX 事件及 HTTP 回调桥接、Access JWT 验证、受限网络请求、短期用户绑定播放凭证、Range 流式代理、独立音频实例，以及基于 PlaylistOut 的元数据适配。测试页面只使用本项目生成的 18 秒 PCM 测试旋律；没有预置第三方音乐或未经验证的公共音源。
+工程包含真正的 QuickJS Release WASM 沙箱、Web Worker 宿主、LX 事件及 HTTP 回调桥接、Access JWT 验证、受限网络请求、短期用户绑定播放凭证、Range 流式代理、独立音频实例，以及基于 PlaylistOut 的元数据适配。测试页面使用本项目生成的两首 PCM 旋律《微光》和《暮色》，时长分别为 18 秒和 12 秒。
 
 ## 运行
 
@@ -25,13 +25,15 @@ pnpm build
 pnpm exec wrangler deploy --dry-run --env="" --outdir artifacts/wrangler
 ```
 
-Playwright 桌面与移动端用例已提供：`pnpm exec playwright install chromium` 后运行 `pnpm test:e2e`。本地环境通过浏览器控制执行了实际交互验证；GitHub CI已在构建产物上运行桌面与移动Chromium共6项Playwright测试，全部通过。测试使用本地API适配器，不能代替真实Cloudflare部署验收。
+安装 Chromium（`pnpm exec playwright install chromium`）后，运行 `pnpm test:e2e` 验证桌面与移动端。用例使用本地 API 适配器，生产部署记录见测试报告。
 
 ## 已验证与未完成
 
 本地测试、浏览器操作、基准原始数据见 [测试报告](docs/TEST_REPORT.md)。完整的阶段状态见 [进度](docs/PROGRESS.md)。原始任务书保存在 [REQUIREMENTS.md](docs/REQUIREMENTS.md)。
 
 LX Compatibility Layer 目前是 PoC 子集，尚未提供 Buffer、加密、压缩、form / formData 和完整版本兼容。不能声称兼容所有洛雪音源。
+
+歌单导入页支持本地 JSON / CSV 文件、分页预览、逐条错误提示和 JSON / CSV 导出。CSV 至少包含 `title` 和 `artist` 列，可选 `album` 和 `duration`（秒）。站内导出的文件保留歌曲的平台标识与原始字段，并可重新导入。
 
 线上搜索、线上歌单抓取、自动换源、定时音源维护、歌词、收藏、D1 同步、离线 PWA 均未完成。没有用空接口或假成功返回代替这些功能；未实现的线上导入返回 501。
 

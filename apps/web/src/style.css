@@ -37,3 +37,10 @@ body{overflow-x:hidden}
  .now-playing div { min-width: 0; }
  .now-playing strong, .now-playing small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+.playlist-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0}
+.playlist-pagination{justify-content:center;margin-top:18px}
+.import-actions{flex-wrap:wrap}
+.import-failures{font-size:12px;line-height:1.7;margin:12px 0;color:#855b4a}
+.import-failures summary{cursor:pointer}
+.import-failures ol{max-height:12rem;overflow:auto;padding-left:24px;list-style:none}
+.preview-track>div,.preview-track code{min-width:0;overflow-wrap:anywhere}
