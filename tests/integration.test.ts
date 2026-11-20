@@ -16,6 +16,26 @@ describe('Worker routes',()=>{
   const other=await app.request(`http://localhost${proxy.url}`,undefined,{...env,DEV_IDENTITY:'other-user'});expect(other.status).toBe(403);
   const redirect:any=await (await post('/api/playback/session',{...payload,mode:'redirect'})).json();const r=await app.request(`http://localhost${redirect.url}`,undefined,env);expect(r.status).toBe(302);expect(r.headers.get('location')).toBe(payload.url);
  });
+ it('resolves a distinct second WAV and serves the same bytes through playback proxy',async()=>{
+  const origin='http://localhost';
+  const url=origin+'/api/fixtures/dusk.wav';
+  const bridge=await post('/api/sources/poc-owned/request',{url:origin+'/api/fixtures/resolve/dusk'});
+  expect(bridge.status).toBe(200);
+  const resolved=await bridge.json() as {body:string};
+  expect(JSON.parse(resolved.body).url).toBe(url);
+  const session=await post('/api/playback/session',{sourceId:'poc-owned',url,mode:'proxy'});
+  expect(session.status).toBe(200);
+  const range={headers:{range:'bytes=44-199'}};
+  const direct=await app.request(url,range,env);
+  const playback=await session.json() as {url:string};
+  const proxy=await app.request(origin+playback.url,range,env);
+  const original=await app.request(origin+'/api/fixtures/tone.wav',range,env);
+  expect(proxy.status).toBe(206);
+  expect(proxy.headers.get('content-range')).toBe('bytes 44-199/384044');
+  const expected=new Uint8Array(await direct.arrayBuffer());
+  expect(new Uint8Array(await proxy.arrayBuffer())).toEqual(expected);
+  expect(new Uint8Array(await original.arrayBuffer())).not.toEqual(expected);
+ });
  it('returns a real 501 for unverified online import',async()=>{expect((await post('/api/playlists/import',{url:'https://music.163.com/playlist?id=12345'})).status).toBe(501)});
 });
 describe('owned audio ranges',()=>{

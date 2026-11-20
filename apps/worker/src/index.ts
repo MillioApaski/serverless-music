@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError,ManifestSchema,errorBody,type Source } from '../../../packages/core/src/index';
 import { authenticate,type AuthEnv,type Identity } from './auth';
 import { sourceScript,fixtureManifest,toneResponse } from './fixtures';
+import { testTracks } from '../../../packages/core/src/test-tracks';
 import { httpBridge } from '../../../packages/stream-proxy/src/network';
 import { issueToken,verifyToken } from '../../../packages/stream-proxy/src/token';
 import { proxyAudio } from '../../../packages/stream-proxy/src/stream';
@@ -30,19 +31,23 @@ app.use('*',async(c,next)=>{
 app.use('/api/*',bodyLimit({maxSize:1024*1024,onError:c=>c.json(errorBody('BODY_TOO_LARGE','请求体过大'),413)}));
 async function sourceById(id:string){if(id==='poc-owned')return fixtureManifest();const source=sources.find(s=>s.id===id&&s.enabled);if(!source)throw new AppError('SOURCE_NOT_FOUND','音源不存在或已禁用',404);return source}
 async function rateLimit(c:any){if(c.env.APP_ENV==='local')return;if(!c.env.HTTP_LIMITER)throw new AppError('LIMITER_CONFIGURATION','请求限流尚未配置',503);if(!(await c.env.HTTP_LIMITER.limit({key:c.get('identity').id})).success)throw new AppError('RATE_LIMITED','请求过于频繁',429)}
-const exactFixture=(url:string,origin:string)=>url===`${origin}/api/fixtures/tone.wav`;
+const exactFixture=(url:string,origin:string)=>testTracks.find(track=>url===origin+track.audioPath);
 app.get('/api/me',c=>c.json(c.get('identity')));
 app.get('/api/status',c=>c.json({phase:1,completedPhases:[0],productionReady:false,blockers:['尚未接入获得授权的真实第三方音源','Access 专项验收与长期内存测试延期','真实平台歌单端点尚未验证'],identity:c.get('identity').mode,features:{quickjs:'poc',httpBridge:'poc',range:'poc',playlist:'local-json'}}));
 app.get('/api/sources',async c=>c.json({sources:[await fixtureManifest(),...sources]}));
 app.get('/api/fixtures/source.js',c=>c.body(sourceScript,200,{'content-type':'text/javascript; charset=utf-8'}));
-app.on(['GET','HEAD'],'/api/fixtures/tone.wav',c=>toneResponse(c.req.raw));
-app.get('/api/fixtures/resolve',c=>c.json({url:new URL('/api/fixtures/tone.wav',c.req.url).href}));
+for(const track of testTracks){
+ app.on(['GET','HEAD'],track.audioPath,c=>toneResponse(c.req.raw,track));
+ app.get(track.resolvePath,c=>c.json({url:new URL(track.audioPath,c.req.url).href}));
+}
 const bridgeInput=z.object({url:z.url().max(2048),method:z.enum(['GET','HEAD','POST']).default('GET'),headers:z.record(z.string(),z.string().max(2048)).default({}),body:z.string().max(65536).optional(),timeout:z.number().int().positive().max(10000).optional()}).strict();
 app.post('/api/sources/:id/request',async c=>{
  await rateLimit(c);const source=await sourceById(c.req.param('id'));const input=bridgeInput.parse(await c.req.json());
  if(source.id==='poc-owned'){
-   if(input.url!==new URL('/api/fixtures/resolve',c.req.url).href||input.method!=='GET'||Object.keys(input.headers).length||input.body)throw new AppError('TARGET_DENIED','测试音源仅允许固定测试端点',403);
-   return c.json({statusCode:200,headers:{'content-type':'application/json'},body:JSON.stringify({url:new URL('/api/fixtures/tone.wav',c.req.url).href})});
+   const origin=new URL(c.req.url).origin;
+   const track=testTracks.find(candidate=>input.url===origin+candidate.resolvePath);
+   if(!track||input.method!=='GET'||Object.keys(input.headers).length||input.body)throw new AppError('TARGET_DENIED','测试音源仅允许固定测试端点',403);
+   return c.json({statusCode:200,headers:{'content-type':'application/json'},body:JSON.stringify({url:origin+track.audioPath})});
  }
  return c.json(await httpBridge(input,source.allowedHosts,c.req.raw.signal));
 });
@@ -56,7 +61,11 @@ app.post('/api/playback/session',async c=>{
 });
 app.on(['GET','HEAD'],'/api/stream/:token',async c=>{
  const data=await verifyToken(c.req.param('token'),c.get('identity').id,c.env.STREAM_SECRET);const source=await sourceById(data.sourceId);
- if(source.id==='poc-owned'){if(!exactFixture(data.url,new URL(c.req.url).origin))throw new AppError('TARGET_DENIED','目标地址无效',403);return toneResponse(c.req.raw)}
+ if(source.id==='poc-owned'){
+  const track=exactFixture(data.url,new URL(c.req.url).origin);
+  if(!track)throw new AppError('TARGET_DENIED','目标地址无效',403);
+  return toneResponse(c.req.raw,track);
+ }
  return proxyAudio(c.req.raw,data.url,source.allowedHosts);
 });
 app.get('/api/redirect/:token',async c=>{

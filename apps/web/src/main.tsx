@@ -4,6 +4,7 @@ import {Headphones,Compass,Radio,FolderInput,FlaskConical,ArrowUpRight,Play,Paus
 import {SourceClient} from '../../../packages/source-runtime/src/client';
 import {player,type PlaybackOrder,type QueueEntry} from '../../../packages/player/src/engine';
 import {sha256,type Source,type Track} from '../../../packages/core/src/index';
+import {testTracks,type TestTrack} from '../../../packages/core/src/test-tracks';
 import './style.css';
 type Page='overview'|'sources'|'import'|'evidence';
 type PlaybackMode='direct'|'redirect'|'proxy';
@@ -31,6 +32,7 @@ async function api(path:string,body?:unknown,signal?:AbortSignal){const response
 const demoScript=`lx.on(lx.EVENT_NAMES.request, async () => 'isolated');lx.send(lx.EVENT_NAMES.inited,{sources:{local:{type:'music',actions:['musicUrl'],qualitys:[]}}});`;
 function App(){
  const [page,setPage]=useState<Page>('overview');const [sources,setSources]=useState<Source[]>([]);const [error,setError]=useState('');const [identity,setIdentity]=useState('正在检查');const [running,setRunning]=useState(false);const [results,setResults]=useState<Result[]>([]);const [playMode,setPlayMode]=useState<PlaybackMode>('direct');const [labSourceId,setLabSourceId]=useState('poc-owned');const [progress,setProgress]=useState(0);const [duration,setDuration]=useState(18);const [volume,setVolume]=useState(initialVolume);
+ const [labTrackId,setLabTrackId]=useState<TestTrack['id']>(testTracks[0].id);
  const [order,setOrder]=useState(initialOrder);
  const [queueOpen,setQueueOpen]=useState(false);
  const [,refreshPlayer]=useReducer((revision:number)=>revision+1,0);
@@ -44,32 +46,34 @@ function App(){
  const source=sources.find(s=>s.id==='poc-owned');
  const labSources=sources.filter(s=>s.enabled&&s.supportedPlatforms.includes('local')&&s.supportedActions.includes('musicUrl'));
  const labSource=labSources.find(s=>s.id===labSourceId);
+ const labTracks=labSource?.id==='poc-owned'?testTracks:testTracks.slice(0,1);
+ const labTrack=labTracks.find(track=>track.id===labTrackId)??testTracks[0];
  async function withClient<T>(fn:(c:SourceClient)=>Promise<T>){const client=new SourceClient();clients.current.add(client);try{return await fn(client)}finally{client.dispose();clients.current.delete(client)}}
- async function resolveTone(selectedSource:Source,mode:PlaybackMode,signal:AbortSignal){return withClient(async client=>{
+ async function resolveTone(selectedSource:Source,track:TestTrack,mode:PlaybackMode,signal:AbortSignal){return withClient(async client=>{
   signal.addEventListener('abort',()=>client.dispose(),{once:true});
   const response=await fetch(selectedSource.scriptUrl,{signal});
   if(!response.ok)throw new Error('无法加载音源脚本');
   await client.load(await response.text(),selectedSource);
-  const resolved=await client.request({source:'local',action:'musicUrl',info:{type:null,musicInfo:{endpoint:`${location.origin}/api/fixtures/resolve`}}});
+  const resolved=await client.request({source:'local',action:'musicUrl',info:{type:null,musicInfo:{endpoint:`${location.origin}${track.resolvePath}`}}});
   return (await api('/api/playback/session',{sourceId:selectedSource.id,url:resolved,mode},signal)).url;
  })}
- function queueEntry(selectedSource:Source,mode:PlaybackMode):QueueEntry{
+ function queueEntry(selectedSource:Source,track:TestTrack,mode:PlaybackMode):QueueEntry{
   return {
-   id:`${selectedSource.id}:${mode}`,
-   title:'微光 · 测试旋律',
+   id:`${selectedSource.id}:${track.id}:${mode}`,
+   title:`${track.title} · 测试旋律`,
    artist:`${selectedSource.name} · ${mode.toUpperCase()}`,
-   resolve:signal=>resolveTone(selectedSource,mode,signal),
+   resolve:signal=>resolveTone(selectedSource,track,mode,signal),
   };
  }
- function playSource(selectedSource:Source,mode:PlaybackMode){
-  const entry=queueEntry(selectedSource,mode);
+ function playSource(selectedSource:Source,track:TestTrack,mode:PlaybackMode){
+  const entry=queueEntry(selectedSource,track,mode);
   setError('');
   engine.enqueue(entry);
   void engine.playQueued(entry.id);
  }
- function playTone(){if(source)playSource(source,playMode)}
+ function playTone(){if(source)playSource(source,testTracks[0],playMode)}
  function addSource(selectedSource:Source,next=false){
-  engine.enqueue(queueEntry(selectedSource,playMode),next);
+  engine.enqueue(queueEntry(selectedSource,labTrack,playMode),next);
   setQueueOpen(true);
  }
  function skip(direction:-1|1){
@@ -100,14 +104,24 @@ function App(){
  {error&&<div className="error-banner" role="alert"><AlertCircle size={17}/>{error}<button onClick={()=>setError('')}>关闭</button></div>}
  {page==='overview'&&<><div className="eyebrow"><span/> SERVERLESS MUSIC LAB</div><section className="hero"><div><h1>音乐，自由流动。</h1><p>让歌单跨越平台，让播放回归简单。<br/>从一个安全、轻盈的音源运行时开始。</p><div className="hero-actions"><button className="primary" onClick={playTone} disabled={!source}><Play size={15} fill="currentColor"/>试听自有音频</button><button className="text-button" onClick={()=>void runChecks()} disabled={!source||running}>运行技术验证 <ArrowUpRight size={16}/></button></div></div><div className="record-art" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="record"><div className="record-label"><span>SM</span><small>ORIGINAL TEST AUDIO</small><i/></div></div><div className="record-caption"><span className="tiny-dot"/> PLAY YOUR OWN FREQUENCY</div></div></section>
  <div className="section-heading"><h2>从这里开始</h2><span>三个独立模块，一条完整播放链路</span></div><div className="feature-grid"><button className="feature" onClick={()=>setPage('sources')}><span className="feature-icon violet"><Radio size={20}/></span><span className="feature-number">01</span><h3>隔离运行音源</h3><p>在 Web Worker 内运行 QuickJS，<br/>脚本只通过受限接口访问网络。</p><span className="feature-link">打开音源实验室 <ArrowUpRight size={15}/></span></button><button className="feature" onClick={()=>setPage('import')}><span className="feature-icon amber"><FolderInput size={20}/></span><span className="feature-number">02</span><h3>带上你的歌单</h3><p>预览 JSON 元数据，保留原生 ID。<br/>无需提前解析音乐播放地址。</p><span className="feature-link">预览歌单数据 <ArrowUpRight size={15}/></span></button><button className="feature" onClick={()=>void runChecks()} disabled={!source||running}><span className="feature-icon mint"><FlaskConical size={20}/></span><span className="feature-number">03</span><h3>让结果可验证</h3><p>在当前浏览器执行沙箱与 Range 检查。<br/>每一项状态都来自实际运行。</p><span className="feature-link">{running?'正在运行…':'执行浏览器验证'} <ArrowUpRight size={15}/></span></button></div>
- <div className="section-heading audio-heading"><h2>测试音频</h2><span>自有生成旋律 · 无第三方音乐资源</span></div><div className="track-table"><div className="table-head"><span>#</span><span>歌曲</span><span>来源</span><span>时长</span><span/></div><div className="track-row"><span className="track-index">01</span><div className="track-title"><span className="mini-cover"><Music2 size={22}/></span><div><strong>微光</strong><small>Serverless Music · 原创测试旋律</small></div></div><span className="source-pill">自有测试音源</span><span className="muted">0:18</span><button className="icon-button" aria-label="播放测试旋律" onClick={playTone} disabled={!source}><Play size={17}/></button></div></div><div className="gate-note"><ShieldCheck size={18}/><p>技术验证已收尾。独立测试音源已验证播放链路和 Workers CPU 开销。</p><button onClick={()=>setPage('evidence')}>查看进度 <ChevronRight size={14}/></button></div></>}
+ <div className="section-heading audio-heading"><h2>测试音频</h2><span>自有生成旋律 · 无第三方音乐资源</span></div><div className="track-table"><div className="table-head"><span>#</span><span>歌曲</span><span>来源</span><span>时长</span><span/></div>{testTracks.map((track,index)=><div className="track-row" key={track.id}>
+  <span className="track-index">{String(index+1).padStart(2,'0')}</span>
+  <div className="track-title"><span className="mini-cover"><Music2 size={22}/></span><div><strong>{track.title}</strong><small>Serverless Music · 原创测试旋律</small></div></div>
+  <span className="source-pill">自有测试音源</span><span className="muted">{formatTime(track.duration)}</span>
+  <button className="icon-button" aria-label={`播放${track.title}`} onClick={()=>{if(source)playSource(source,track,playMode)}} disabled={!source}><Play size={17}/></button>
+ </div>)}</div><div className="gate-note"><ShieldCheck size={18}/><p>技术验证已收尾。独立测试音源已验证播放链路和 Workers CPU 开销。</p><button onClick={()=>setPage('evidence')}>查看进度 <ChevronRight size={14}/></button></div></>}
  {page==='sources'&&<><div className="eyebrow">SOURCE LAB</div><h1 className="page-title">音源实验室</h1><p className="page-intro">脚本执行在独立的 QuickJS 虚拟机中，页面与用户数据不向脚本开放。</p><div className="section-heading"><h2>音源注册表</h2><span>{sources.length} 个测试音源 · 第三方音源尚未接入</span></div>{sources.map(s=><div className="source-detail" key={s.id}><div className="source-top"><span className="feature-icon violet"><Radio size={22}/></span><div><h3>{s.name}</h3><p>v{s.version} · {s.license} · 本项目自行编写</p></div><span className="badge">测试用</span></div><p>{s.authorization}</p><div className="hash">SHA-256 <code>{s.sha256}</code></div><div className="source-footer"><span>local / musicUrl</span><span>{s.allowedHosts.length?s.allowedHosts.map(policy=>policy.host+policy.pathPrefix).join('、'):'网络权限：固定的同源测试端点'}</span></div></div>)}<div className="section-heading"><h2>播放链路</h2></div>
  <label className="source-picker">试听音源
   <select value={labSourceId} onChange={event=>setLabSourceId(event.target.value)} disabled={!labSources.length}>
    {labSources.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
   </select>
  </label>
- <div className="mode-options">{([{id:'direct',title:'Direct',text:'直接读取已批准的音频地址'},{id:'redirect',title:'Redirect',text:'通过短期凭证返回 302 跳转'},{id:'proxy',title:'Proxy',text:'同源流式返回，支持 Range'}] as const).map(m=><button className={playMode===m.id?'selected':''} key={m.id} onClick={()=>setPlayMode(m.id)}><strong>{m.title}</strong><small>{m.text}</small>{playMode===m.id&&<Check size={17}/>}</button>)}</div><p className="hint">两种音源使用同一首测试曲。选择外部测试音源可验证跨域跳转与代理回源。</p><button className="primary" onClick={()=>{if(labSource)playSource(labSource,playMode)}} disabled={!labSource}><Play size={15}/>用 {playMode} 模式试听</button>
+ <label className="source-picker">试听曲目
+  <select value={labTrack.id} onChange={event=>{const track=labTracks.find(item=>item.id===event.target.value);if(track)setLabTrackId(track.id)}} disabled={!labSource||labTracks.length===1}>
+   {labTracks.map(track=><option key={track.id} value={track.id}>{track.title}</option>)}
+  </select>
+ </label>
+ <div className="mode-options">{([{id:'direct',title:'Direct',text:'直接读取已批准的音频地址'},{id:'redirect',title:'Redirect',text:'通过短期凭证返回 302 跳转'},{id:'proxy',title:'Proxy',text:'同源流式返回，支持 Range'}] as const).map(m=><button className={playMode===m.id?'selected':''} key={m.id} onClick={()=>setPlayMode(m.id)}><strong>{m.title}</strong><small>{m.text}</small>{playMode===m.id&&<Check size={17}/>}</button>)}</div><p className="hint">自有音源提供两首测试曲。外部源提供《微光》，可验证跨域跳转与代理回源。</p><button className="primary" onClick={()=>{if(labSource)playSource(labSource,labTrack,playMode)}} disabled={!labSource}><Play size={15}/>用 {playMode} 模式试听</button>
  <div className="queue-actions">
   <button className="secondary" disabled={!labSource} onClick={()=>{if(labSource)addSource(labSource)}}>加入队列</button>
   <button className="secondary" disabled={!labSource} onClick={()=>{if(labSource)addSource(labSource,true)}}>下一首播放</button>
