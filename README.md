@@ -33,9 +33,9 @@ pnpm exec wrangler deploy --dry-run --env="" --outdir artifacts/wrangler
 
 LX Compatibility Layer 目前是 PoC 子集，尚未提供 Buffer、加密、压缩、form / formData 和完整版本兼容。不能声称兼容所有洛雪音源。
 
-歌单导入页支持本地 JSON / CSV 文件、分页预览、逐条错误提示和 JSON / CSV 导出。CSV 至少包含 `title` 和 `artist` 列，可选 `album` 和 `duration`（秒）。站内导出的文件保留歌曲的平台标识与原始字段，并可重新导入。
+音乐搜索支持网易云音乐、QQ 音乐及双平台聚合，可核对录音版本并手动保存曲目关联。歌单导入支持两平台的标准公开分享链接、分页读取与续读，以及本地 JSON / CSV 文件、逐条错误提示和 JSON / CSV 导出。CSV 至少包含 `title` 和 `artist` 列，可选 `album` 和 `duration`（秒）。站内导出的文件保留歌曲的平台标识与原始字段，并可重新导入。
 
-线上搜索、线上歌单抓取、自动换源、定时音源维护、歌词、收藏、D1 同步、离线 PWA 均未完成。没有用空接口或假成功返回代替这些功能；未实现的线上导入返回 501。
+平台短链、公开主页、批量导入和更多平台适配仍在开发。真实音源播放、自动换源、定时音源维护、歌词、收藏、D1 同步及离线 PWA 随后续阶段推进。
 
 测试站点为 https://music.convert-alpha.cc 。测试音源的播放链路和 Workers CPU 已完成线上验证。真实音源、Access 专项和长期内存测试随对应开发阶段继续。
 

@@ -1,9 +1,21 @@
-import React, { useRef, useState } from 'react';
-import { ChevronRight, Download, ExternalLink, FileJson, Music2 } from 'lucide-react';
-import { importFile, parsePlaylistLink } from '../../../packages/playlist/src/import';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronRight, Download, FileJson, Music2 } from 'lucide-react';
+import { importFile } from '../../../packages/playlist/src/import';
 import { exportCsv, importCsv } from '../../../packages/playlist/src/csv';
+import type { PlaylistPage } from '../../../packages/playlist/src/providers';
+import type { Track } from '../../../packages/core/src/index';
 
 const pageSize = 50;
+type RemoteImport = {
+  url: string;
+  name: string;
+  total: number;
+  next: number | null;
+  tracks: Map<string, Track>;
+  failures: PlaylistPage['failures'];
+  duplicates: number;
+  fingerprints: Set<string>;
+};
 const exampleText = JSON.stringify({
   name: '我的测试歌单',
   platform: 'tx',
@@ -23,7 +35,21 @@ export function PlaylistImport() {
   const [page, setPage] = useState(0);
   const [link, setLink] = useState('');
   const [linkNote, setLinkNote] = useState('');
+  const [remotePending, setRemotePending] = useState(false);
+  const [canResume, setCanResume] = useState(false);
   const fileRevision = useRef(0);
+  const remoteRequest = useRef<AbortController | null>(null);
+  const remoteProgress = useRef<RemoteImport | null>(null);
+  useEffect(() => () => remoteRequest.current?.abort(), []);
+
+  function resetRemote() {
+    remoteRequest.current?.abort();
+    remoteRequest.current = null;
+    remoteProgress.current = null;
+    setRemotePending(false);
+    setCanResume(false);
+    setLinkNote('');
+  }
 
   function prepare(parse: () => ReturnType<typeof importFile>) {
     setPage(0);
@@ -38,12 +64,14 @@ export function PlaylistImport() {
   }
 
   function previewJson(value: string) {
+    resetRemote();
     fileRevision.current++;
     prepare(() => importFile(JSON.parse(value.replace(/^\uFEFF/, ''))));
   }
 
   async function loadFile(file?: File) {
     if (!file) return;
+    resetRemote();
     const revision = ++fileRevision.current;
     setPreview(undefined);
     setNote('正在读取文件…');
@@ -82,19 +110,90 @@ export function PlaylistImport() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function identify() {
-    try {
-      const { platform, id } = parsePlaylistLink(link);
-      setLinkNote(`${platform} · 歌单 ID ${id}`);
-    } catch (error) {
-      setLinkNote(error instanceof Error ? error.message : String(error));
+  async function importLink(resume = false) {
+    if (remoteRequest.current || (resume && !remoteProgress.current)) return;
+    fileRevision.current++;
+    const controller = new AbortController();
+    remoteRequest.current = controller;
+    setRemotePending(true);
+    setCanResume(false);
+    setLinkNote('正在读取歌单…');
+    setNote('');
+    if (!resume) {
+      setText('');
+      setPage(0);
+      setPreview(undefined);
+      remoteProgress.current = {
+        url: link.trim(), name: '', total: 0, next: 0, tracks: new Map(),
+        failures: [], duplicates: 0, fingerprints: new Set(),
+      };
     }
+    const progress = remoteProgress.current;
+    try {
+      if (!progress) return;
+      while (progress.next !== null) {
+        const offset: number = progress.next;
+        const response = await fetch('/api/playlists/import', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url: progress.url, offset }),
+          signal: controller.signal,
+        });
+        const data = await response.json() as PlaylistPage & { error?: { message: string } };
+        if (controller.signal.aborted) return;
+        if (!response.ok) throw new Error(data.error?.message ?? '平台歌单读取失败');
+        if (offset && (progress.name !== data.name || progress.total !== data.total)) {
+          throw new Error('远程歌单已发生变更，请重新导入');
+        }
+        const received = data.tracks.length + data.failures.length;
+        const end = offset + received;
+        if (end > data.total || (data.nextOffset === null ? end !== data.total : received === 0 || data.nextOffset !== end)) {
+          throw new Error('平台返回了不完整的分页结果');
+        }
+        const fingerprint = JSON.stringify(data.tracks.map(track => track.id));
+        if (data.tracks.length > 1 && progress.fingerprints.has(fingerprint)) {
+          throw new Error('平台重复返回了同一页曲目，请重试');
+        }
+        if (data.tracks.length > 1) progress.fingerprints.add(fingerprint);
+
+        for (const track of data.tracks) {
+          if (progress.tracks.has(track.id)) progress.duplicates++;
+          else progress.tracks.set(track.id, track);
+        }
+        progress.failures.push(...data.failures);
+        progress.name = data.name;
+        progress.total = data.total;
+        progress.next = data.nextOffset;
+        setPreview({
+          name: progress.name, total: end, duplicates: progress.duplicates,
+          tracks: [...progress.tracks.values()], failures: [...progress.failures],
+        });
+        setLinkNote(`已读取 ${end} / ${data.total} 首 · ${progress.duplicates} 首重复 · ${progress.failures.length} 首失败`);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const message = error instanceof Error ? error.message : '平台歌单读取失败';
+        setLinkNote(progress?.next ? `已保留前 ${progress.next} 首的结果。 ${message}` : message);
+        setCanResume(progress?.next != null);
+      }
+    } finally {
+      if (remoteRequest.current === controller) {
+        remoteRequest.current = null;
+        setRemotePending(false);
+      }
+    }
+  }
+
+  function stopImport() {
+    remoteRequest.current?.abort();
+    setCanResume(remoteProgress.current?.next != null);
+    setLinkNote('已暂停导入，可从当前页继续');
   }
 
   const totalPages = Math.ceil((preview?.tracks.length ?? 0) / pageSize);
   return <>
     <h1 className="page-title">歌单导入</h1>
-    <p className="page-intro">导入本地 JSON 或 CSV，检查曲目和平台标识，再导出校验后的歌单。</p>
+    <p className="page-intro">导入本地 JSON、CSV 或公开歌单链接，检查曲目和平台标识，再导出校验后的歌单。</p>
     <div className="import-layout">
       <section className="import-panel">
         <div className="section-heading">
@@ -103,6 +202,7 @@ export function PlaylistImport() {
         </div>
         <label htmlFor="playlist-json" className="hint">粘贴含 name、platform 和 tracks 的 JSON</label>
         <textarea id="playlist-json" value={text} onChange={event => {
+          resetRemote();
           fileRevision.current++;
           setText(event.target.value);
           setPreview(undefined);
@@ -126,14 +226,21 @@ export function PlaylistImport() {
         <h3>CSV 格式</h3>
         <p>首行包含 title 和 artist 两列，专辑和时长可用 album 和 duration，时长以秒计。</p>
         <div className="subtle-line"/>
-        <h3>识别分享链接</h3>
-        <p>可识别网易云和 QQ 音乐的标准链接及歌单 ID。</p>
-        <label className="sr-only" htmlFor="playlist-link">歌单分享链接</label>
-        <input id="playlist-link" value={link} onChange={event => {
-          setLink(event.target.value);
-          setLinkNote('');
-        }} placeholder="粘贴歌单链接"/>
-        <button className="secondary" disabled={!link.trim()} onClick={identify}>识别链接 <ExternalLink size={14}/></button>
+        <h3>从分享链接导入</h3>
+        <p>粘贴网易云音乐或 QQ 音乐的公开歌单链接。</p>
+        <form onSubmit={event => { event.preventDefault(); void importLink(); }}>
+          <label className="sr-only" htmlFor="playlist-link">歌单分享链接</label>
+          <input id="playlist-link" value={link} onChange={event => {
+            resetRemote();
+            setLink(event.target.value);
+          }} maxLength={2048} placeholder="粘贴歌单链接"/>
+          <div className="playlist-actions">
+            <button className="primary" disabled={!link.trim() || remotePending}>导入链接</button>
+            {remotePending && <button className="secondary" type="button" onClick={stopImport}>暂停导入</button>}
+            {canResume && !remotePending &&
+              <button className="secondary" type="button" onClick={() => void importLink(true)}>继续导入</button>}
+          </div>
+        </form>
         <p className="hint" role="status">{linkNote}</p>
       </section>
     </div>

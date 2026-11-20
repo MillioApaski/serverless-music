@@ -28,6 +28,8 @@
 
 外层适配器独立实现：原始 songmid/id/file 等对象存入 TrackIdentifier.raw，不绑定临时 URL；JSON 校验、导入失败列表、按内部 ID 去重、版本区分都由本项目处理。上游 client.ts 中的固定 X-Real-IP / X-Forwarded-For 请求头未采用；短链重定向客户端未移植。
 
+Phase 2 继续沿用已有 normalize 模块。Worker 的元数据客户端独立实现，网易云公开歌单详情与批量曲目详情、QQ 公开歌单分页参数参考上述固定版本的 providers，搜索接口使用经实际探测的公开读取端点。客户端保留曲目顺序、平台标识和原始字段。每次远程分页仅向固定平台接口请求所需数据。
+
 ## 独立实现的 LX 子集
 
 参考官方规范：https://lxmusic.toside.cn/desktop/custom-source 。实现 lx.EVENT_NAMES、on、send、request、初始化、Promise 调度、定时器、回调取消。`utils` 当前为空，不能宣称完整洛雪兼容。

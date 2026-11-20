@@ -44,3 +44,11 @@ body{overflow-x:hidden}
 .import-failures summary{cursor:pointer}
 .import-failures ol{max-height:12rem;overflow:auto;padding-left:24px;list-style:none}
 .preview-track>div,.preview-track code{min-width:0;overflow-wrap:anywhere}
+.metadata-form{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+.metadata-form input,.metadata-form select{border:1px solid #dfe3e6;background:#fff;border-radius:5px;padding:11px 12px;color:#333;font:inherit;font-size:13px}
+.metadata-form input{flex:1 1 180px;min-width:0}
+.metadata-reference{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#ebf0eb;border-radius:6px;font-size:12px}
+.metadata-reference button,.metadata-track button{margin-left:auto}
+.metadata-track{gap:10px}
+.metadata-track button{padding:7px 9px;flex-shrink:0}
+@media(max-width:760px){.nav-item{padding-inline:5px}}

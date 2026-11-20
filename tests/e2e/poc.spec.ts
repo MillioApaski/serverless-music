@@ -64,3 +64,54 @@ test('CSV import pages through results and downloads both formats', async ({ pag
     await expect(page.getByRole('status').filter({ hasText: '51 首已读取' })).toContainText('0 首失败');
   }
 });
+
+test('public playlist import keeps the first page when retrying a failed page', async ({ page }) => {
+  const offsets: number[] = [];
+  const song = (id: number) => ({ id: `wy:${id}`, title: `远程曲目 ${id}`, artists: ['测试歌手'], identifiers: [] });
+  await page.route('**/api/playlists/import', async route => {
+    const { offset } = route.request().postDataJSON() as { offset: number };
+    offsets.push(offset);
+    if (offsets.length === 2) {
+      await route.fulfill({ status: 502, json: { error: { message: '平台暂时不可用' } } });
+      return;
+    }
+    await route.fulfill({
+      json: { name: '远程测试歌单', total: 2, nextOffset: offset ? null : 1, tracks: [song(offset + 1)], failures: [] },
+    });
+  });
+  await page.getByRole('button', { name: '歌单导入', exact: true }).click();
+  await page.getByLabel('歌单分享链接').fill('https://music.163.com/playlist?id=12345');
+  await page.getByRole('button', { name: '导入链接', exact: true }).click();
+  await expect(page.getByText('远程曲目 1', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '平台暂时不可用' })).toBeVisible();
+  await page.getByRole('button', { name: '继续导入', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '已读取 2 / 2 首' })).toBeVisible();
+  await expect(page.getByText('远程曲目 2', { exact: true })).toBeVisible();
+  expect(offsets).toEqual([0, 1, 1]);
+});
+
+test('music search asks before saving a cross-platform match and excludes different versions', async ({ page }) => {
+  const song = (platform: 'wy' | 'tx', id: string, title: string) => ({
+    id: `${platform}:${id}`, title, artists: ['演唱者'], album: '原声', duration: 213,
+    identifiers: [{ platform, id }],
+  });
+  await page.route('**/api/metadata/search', async route => {
+    const { platform } = route.request().postDataJSON() as { platform: string };
+    await route.fulfill({
+      json: { results: platform === 'tx'
+        ? [{ platform: 'tx', tracks: [song('tx', '22', '初夏'), song('tx', '23', '初夏 (Live)')], hasMore: false }]
+        : [{ platform: 'wy', tracks: [song('wy', '11', '初夏')], hasMore: false }] },
+    });
+  });
+  await page.getByRole('button', { name: '音乐搜索', exact: true }).click();
+  await page.getByLabel('歌曲或歌手').fill('初夏');
+  await page.getByRole('button', { name: '搜索', exact: true }).click();
+  await page.getByRole('button', { name: '找跨平台版本', exact: true }).click();
+  await expect(page.getByText('初夏 (Live)', { exact: true })).toBeVisible();
+  const save = page.getByRole('button', { name: '确认关联', exact: true });
+  await expect(save).toHaveCount(1);
+  await save.click();
+  await expect(page.getByRole('button', { name: '取消关联', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('serverless-music:metadata-links') ?? '{}')))
+    .toEqual({ 'wy:11': 'tx:22', 'tx:22': 'wy:11' });
+});

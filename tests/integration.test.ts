@@ -37,7 +37,7 @@ describe('Worker routes',()=>{
   expect(new Uint8Array(await proxy.arrayBuffer())).toEqual(expected);
   expect(new Uint8Array(await original.arrayBuffer())).not.toEqual(expected);
  });
- it('returns a real 501 for unverified online import',async()=>{expect((await post('/api/playlists/import',{url:'https://music.163.com/playlist?id=12345'})).status).toBe(501)});
+ it('rejects unsupported remote playlist hosts',async()=>{expect((await post('/api/playlists/import',{url:'https://unrelated.example/playlist?id=12345'})).status).toBe(422)});
 });
 describe('owned audio ranges',()=>{
  it('returns exact byte slices equal to a full reference response',async()=>{const full=new Uint8Array(await toneResponse(new Request('http://localhost/tone')).arrayBuffer());for(const range of ['bytes=0-43','bytes=45-120','bytes=-64']){const r=toneResponse(new Request('http://localhost/tone',{headers:{range}}));const start=range==='bytes=-64'?full.length-64:range==='bytes=0-43'?0:45;const end=range==='bytes=-64'?full.length:range==='bytes=0-43'?44:121;expect(new Uint8Array(await r.arrayBuffer())).toEqual(full.slice(start,end))}});
